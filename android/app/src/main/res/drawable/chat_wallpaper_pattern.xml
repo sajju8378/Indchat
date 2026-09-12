@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Subtle neutral tinted background -->
+    <item>
+        <color android:color="#F1F5F9" />
+    </item>
+    <!-- Geometric micro-pattern using subtle gradient -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="45"
+                android:startColor="#F8FAFC"
+                android:endColor="#EEF2F6"
+                android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

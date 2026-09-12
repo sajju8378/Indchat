@@ -1,0 +1,14 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.SimpleE2EEChat" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorSecondary">@color/secondary</item>
+        <item name="android:statusBarColor">@color/surface_light</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@color/background_light</item>
+    </style>
+
+    <style name="Theme.SimpleE2EEChat.Splash" parent="Theme.SimpleE2EEChat">
+        <item name="android:windowBackground">@color/surface_light</item>
+    </style>
+</resources>

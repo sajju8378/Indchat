@@ -1,0 +1,16 @@
+{
+  "name": "simple-e2ee-chat-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-knowledge E2EE Messenger backend using Node.js, Express, and SQLite",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node tests/e2ee_integration.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "dotenv": "^17.2.3"
+  }
+}

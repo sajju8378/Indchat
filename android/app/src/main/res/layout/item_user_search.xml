@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="20dp"
+    android:paddingVertical="12dp">
+
+    <TextView
+        android:id="@+id/tvUserAvatar"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="@color/primary"
+        android:gravity="center"
+        android:text="U"
+        android:textColor="@color/on_primary"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvUserDisplayName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="User Display Name"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvUserUsername"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@username"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@color/primary_container"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="4dp"
+        android:text="E2EE"
+        android:textColor="@color/primary_dark"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+</LinearLayout>

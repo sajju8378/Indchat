@@ -1,0 +1,33 @@
+<resources>
+    <string name="app_name">Simple E2EE Chat</string>
+    <string name="login_title">Welcome Back</string>
+    <string name="login_subtitle">Sign in to your end-to-end encrypted chats</string>
+    <string name="username_or_id_hint">Username or ID (e.g. alice or E2E-XXXX)</string>
+    <string name="password_hint">Password</string>
+    <string name="login_button">Log In</string>
+    <string name="no_account">Don\'t have an account? Register</string>
+    <string name="have_account">Already have an account? Log in</string>
+    <string name="register_title">Create Account</string>
+    <string name="register_subtitle">Your private key is generated and stored locally on your device</string>
+    <string name="username_hint">Username (e.g. alice, rahul123)</string>
+    <string name="display_name_hint">Display Name (e.g. Alice Anderson)</string>
+    <string name="confirm_password_hint">Confirm Password</string>
+    <string name="register_button">Generate Keys &amp; Register</string>
+    <string name="recent_chats">Recent Chats</string>
+    <string name="search_users_hint">Search username or name...</string>
+    <string name="new_chat">New Chat</string>
+    <string name="my_id">My ID: %1$s</string>
+    <string name="logout">Log Out</string>
+    <string name="message_hint">Message...</string>
+    <string name="send">Send</string>
+    <string name="menu_save_chat">Save Chat</string>
+    <string name="menu_delete_chat">Delete Chat</string>
+    <string name="menu_logout">Log Out</string>
+    <string name="unable_to_decrypt">Unable to decrypt this message.</string>
+    <string name="key_recovery_warning">This account has no recoverable encrypted key backup. A new device key can be created, but messages encrypted to the previous key cannot be opened.</string>
+    <string name="create_new_key">Create New Key</string>
+    <string name="cancel">Cancel</string>
+    <string name="save_image">Save Image</string>
+    <string name="image_saved">Image saved to device</string>
+    <string name="delete_chat_confirm">Delete all local message history for this conversation?</string>
+</resources>
