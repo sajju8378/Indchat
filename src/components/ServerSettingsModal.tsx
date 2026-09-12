@@ -43,7 +43,16 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
 
     try {
       const res = await fetch(target);
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        setTestStatus('error');
+        setTestMessage(`Host responded with HTML (${res.status}), not an API server. If using GitHub Pages, please use Local Standalone Mode.`);
+        return;
+      }
+
       if (res.ok && data.status === 'ok') {
         setTestStatus('success');
         setTestMessage(`Successfully connected to ${target}!`);

@@ -31,17 +31,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Standalone Service Worker registration for PWABuilder & GitHub Pages
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('./sw.js').then(function(reg) {
-            console.log('[PWA] Service Worker registered with scope:', reg.scope);
-          }).catch(function(err) {
-            console.warn('[PWA] Service Worker registration note:', err);
-          });
-        });
-      }
-    </script>
   </body>
 </html>

@@ -26,10 +26,20 @@ export function getStoredServerConfig(): ServerConfig {
     // ignore
   }
 
-  // If hosted on github.io or static preview without local backend: default to local mode
-  const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+  // Detect if we are running in an environment with a live Express server:
+  // - AI Studio preview (hostname includes 'run.app' or 'ais-dev' or 'ais-pre')
+  // - Local development server (port 3000)
+  // Everywhere else (e.g. GitHub Pages, static hosting, Android APK / WebView without external server),
+  // default to 'local' standalone mode.
+  const isLiveBackendHost = typeof window !== 'undefined' && (
+    window.location.hostname.includes('ais-dev') ||
+    window.location.hostname.includes('ais-pre') ||
+    window.location.hostname.includes('run.app') ||
+    ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port === '3000')
+  );
+
   return {
-    mode: isGitHubPages ? 'local' : 'cloud',
+    mode: isLiveBackendHost ? 'cloud' : 'local',
     serverUrl: '',
   };
 }
@@ -63,24 +73,23 @@ async function safeFetchJson<T>(endpoint: string, options: RequestInit = {}): Pr
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Network connection failed to ${url}. ${message}. If using GitHub Pages, switch to "Local Standalone Mode" in Server Settings.`
+      `Network connection failed to ${url}. ${message}`
     );
   }
 
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    const text = await res.text();
-    if (text.includes('<!doctype') || text.includes('<html') || res.status === 404) {
-      throw new Error(
-        `Backend endpoint not found (${res.status}). GitHub Pages is a static host and cannot run Node.js backend APIs. Tap 'Server Settings' below to switch to 'Local Standalone Mode' or enter your live server URL.`
-      );
-    }
-    throw new Error(`Server returned non-JSON response (${res.status}): ${text.slice(0, 120)}`);
+  const rawText = await res.text();
+  let data: any;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    // If not JSON, it is an HTML page (such as a 404 on GitHub Pages or static host)
+    throw new Error(
+      `Backend API not reachable at ${url} (HTTP ${res.status}). This host does not run an Express/Node backend.`
+    );
   }
 
-  const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error || `Request failed with status ${res.status}`);
+    throw new Error(data?.error || `Request failed with status ${res.status}`);
   }
 
   return data as T;
@@ -130,11 +139,21 @@ export async function apiRegister(
   const config = getStoredServerConfig();
 
   if (config.mode === 'cloud') {
-    return safeFetchJson<{ token: string; user: User }>('/v1/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, displayName, password, publicKey }),
-    });
+    try {
+      return await safeFetchJson<{ token: string; user: User }>('/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, displayName, password, publicKey }),
+      });
+    } catch (err) {
+      // If on static host like GitHub Pages without a custom serverUrl, auto-fallback to local mode
+      if (!config.serverUrl.trim()) {
+        console.warn('Live backend server not reachable on current host, falling back to Local Standalone Mode:', err);
+        saveServerConfig({ mode: 'local', serverUrl: '' });
+      } else {
+        throw err;
+      }
+    }
   }
 
   // Local engine implementation
@@ -177,11 +196,20 @@ export async function apiLogin(
   const config = getStoredServerConfig();
 
   if (config.mode === 'cloud') {
-    return safeFetchJson<{ token: string; user: User }>('/v1/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
+    try {
+      return await safeFetchJson<{ token: string; user: User }>('/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+    } catch (err) {
+      if (!config.serverUrl.trim()) {
+        console.warn('Backend server not reachable on current host, switching to Local Standalone Mode:', err);
+        saveServerConfig({ mode: 'local', serverUrl: '' });
+      } else {
+        throw err;
+      }
+    }
   }
 
   // Local engine implementation
