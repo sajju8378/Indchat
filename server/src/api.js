@@ -32,9 +32,10 @@ export const router = express.Router();
 const USERNAME_REGEX = /^[A-Za-z][A-Za-z0-9_]{2,19}$/;
 
 // Public health check
-router.get('/health', (req, res) => {
+router.get(['/health', '/v1/health'], (req, res) => {
   const stats = getStats();
   res.json({
+    status: 'ok',
     ok: true,
     database: 'sqlite',
     users: stats.users,

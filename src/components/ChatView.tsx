@@ -13,6 +13,12 @@ import {
 } from 'lucide-react';
 import { ActiveSession, DecryptedUIMessage, User } from '../types';
 import { decryptEnvelope, encryptEnvelope } from '../crypto/webCrypto';
+import {
+  apiGetConversation,
+  apiSendMessage,
+  apiMarkDelivered,
+  apiMarkRead,
+} from '../lib/api';
 
 interface ChatViewProps {
   session: ActiveSession;
@@ -41,14 +47,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
 
     const fetchMessages = async () => {
       try {
-        const res = await fetch(`/v1/conversations/${encodeURIComponent(peer.id)}`, {
-          headers: {
-            Authorization: `Bearer ${session.token}`,
-          },
-        });
-        if (!res.ok) return;
-
-        const rawList = await res.json();
+        const rawList = await apiGetConversation(peer.id, session.token);
         if (!isSubscribed) return;
 
         const decryptedList: DecryptedUIMessage[] = [];
@@ -101,7 +100,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
 
             if (msg.status !== 'read') {
               unreadIds.push(msg.id);
-            } else if (msg.status === 'sent') {
+            }
+            if (msg.status === 'sent') {
               undeliveredIds.push(msg.id);
             }
           }
@@ -142,23 +142,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
 
         // Send receipts
         if (unreadIds.length > 0) {
-          await fetch('/v1/messages/read', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session.token}`,
-            },
-            body: JSON.stringify({ ids: unreadIds }),
-          });
+          await apiMarkRead(session.token, unreadIds);
         } else if (undeliveredIds.length > 0) {
-          await fetch('/v1/messages/delivered', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session.token}`,
-            },
-            body: JSON.stringify({ ids: undeliveredIds }),
-          });
+          await apiMarkDelivered(session.token, undeliveredIds);
         }
       } catch (e) {
         // network polling retry
@@ -199,17 +185,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
       const envelope = await encryptEnvelope(payload, peerKeyRef.current, peer.id);
 
       // 2. Transmit envelope to backend
-      const res = await fetch('/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.token}`,
-        },
-        body: JSON.stringify(envelope),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to send message');
+      const data = await apiSendMessage(session.token, envelope);
 
       // Update message ID with real server ID
       setMessages((prev) =>

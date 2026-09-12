@@ -10,6 +10,7 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import { ActiveSession, User } from '../types';
+import { apiSearchUsers } from '../lib/api';
 
 interface RecentChatsProps {
   session: ActiveSession;
@@ -39,12 +40,9 @@ export const RecentChats: React.FC<RecentChatsProps> = ({
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`/v1/users/search?q=${encodeURIComponent(searchQuery.trim())}`);
-        if (res.ok) {
-          const list: User[] = await res.json();
-          // Filter out myself
-          setSearchResults(list.filter((u) => u.id !== session.user.id));
-        }
+        const list = await apiSearchUsers(searchQuery.trim(), session.token);
+        // Filter out myself
+        setSearchResults(list.filter((u) => u.id !== session.user.id));
       } catch (e) {
         // search error
       } finally {

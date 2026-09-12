@@ -19,6 +19,8 @@ export interface ChatMessage {
   deliveredAt?: number | null;
   readAt?: number | null;
   status: 'sent' | 'delivered' | 'read';
+  cachedText?: string;
+  cachedImage?: string;
 }
 
 export interface DecryptedUIMessage {
