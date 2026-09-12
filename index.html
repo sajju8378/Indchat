@@ -4,20 +4,63 @@
     <script>
       // Suppress benign [vite] websocket connection logging in container iframe preview
       (function() {
+        function isViteMessage(arg) {
+          if (!arg) return false;
+          try {
+            var str = typeof arg === 'string' ? arg : (arg.message || arg.stack || (typeof arg.toString === 'function' ? arg.toString() : ''));
+            return str.indexOf('[vite]') !== -1 || (str.indexOf('vite') !== -1 && str.indexOf('websocket') !== -1);
+          } catch(e) {
+            return false;
+          }
+        }
+
         var origErr = console.error;
         console.error = function() {
-          if (arguments.length > 0 && typeof arguments[0] === 'string' && arguments[0].indexOf('[vite]') !== -1) {
-            return;
+          for (var i = 0; i < arguments.length; i++) {
+            if (isViteMessage(arguments[i])) return;
           }
           origErr.apply(console, arguments);
         };
+
         var origWarn = console.warn;
         console.warn = function() {
-          if (arguments.length > 0 && typeof arguments[0] === 'string' && arguments[0].indexOf('[vite]') !== -1) {
-            return;
+          for (var i = 0; i < arguments.length; i++) {
+            if (isViteMessage(arguments[i])) return;
           }
           origWarn.apply(console, arguments);
         };
+
+        var origLog = console.log;
+        console.log = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            if (isViteMessage(arguments[i])) return;
+          }
+          origLog.apply(console, arguments);
+        };
+
+        var origInfo = console.info;
+        console.info = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            if (isViteMessage(arguments[i])) return;
+          }
+          origInfo.apply(console, arguments);
+        };
+
+        window.addEventListener('error', function(e) {
+          if (isViteMessage(e.message) || isViteMessage(e.error)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          if (isViteMessage(e.reason)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          }
+        }, true);
       })();
     </script>
     <meta charset="UTF-8" />

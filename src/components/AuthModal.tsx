@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Eye, EyeOff, KeyRound, UserCheck, AlertCircle, Server, Settings2, Smartphone, Globe, UserPlus, Database } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff, KeyRound, UserCheck, AlertCircle, Settings2, Smartphone, Globe, UserPlus, Database, X, RotateCcw } from 'lucide-react';
 import {
   generateRsaKeyPair,
   exportPrivateKey,
@@ -15,6 +15,9 @@ import {
   apiRegister,
   apiLogin,
   apiRotateKey,
+  apiResetLocalPassword,
+  apiRemoveLocalUser,
+  apiOverwriteRegister,
   getStoredServerConfig,
   saveServerConfig,
   ServerConfig,
@@ -48,6 +51,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Password reset mode state
+  const [isResetMode, setIsResetMode] = useState(false);
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
 
   // Server settings modal state
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
@@ -185,9 +194,117 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
 
   const handleQuickRegister = () => {
     setIsRegister(true);
+    setIsResetMode(false);
     setError(null);
     if (!displayName && username) {
       setDisplayName(username.trim());
+    }
+  };
+
+  const handleStartResetPassword = (targetUser?: string) => {
+    setIsResetMode(true);
+    if (targetUser) {
+      setUsername(targetUser.trim());
+    }
+    setResetNewPassword('');
+    setResetConfirmPassword('');
+    setError(null);
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const cleanUsername = username.trim();
+    if (!cleanUsername) {
+      setError('Please enter a username to reset.');
+      return;
+    }
+    const cleanPassword = resetNewPassword.trim();
+    if (cleanPassword.length < 3) {
+      setError('New password must be at least 3 characters long.');
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setError('Passwords do not match. Please verify and retype.');
+      return;
+    }
+
+    setLoading(true);
+    setStatusText('Updating encryption keys and credentials on device...');
+    try {
+      const result = await apiResetLocalPassword(cleanUsername, cleanPassword);
+      localStorage.setItem(STORAGE_KEY_LAST_USER, cleanUsername);
+      onAuthenticated({
+        token: result.token,
+        user: result.user,
+        keyPair: result.keyPair,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message || 'Failed to reset password.');
+    } finally {
+      setLoading(false);
+      setStatusText('');
+    }
+  };
+
+  const handleRemoveLocalAccount = (e: React.MouseEvent, targetUser: string) => {
+    e.stopPropagation();
+    const clean = targetUser.trim();
+    if (!clean) return;
+    const confirmed = window.confirm(`Remove local account '@${clean}' from this device?`);
+    if (!confirmed) return;
+
+    apiRemoveLocalUser(clean);
+    const updatedUsers = getLocalUserList();
+    setLocalUsers(updatedUsers);
+    if (username.toLowerCase() === clean.toLowerCase()) {
+      setUsername(updatedUsers[0]?.username || '');
+      setPassword('');
+    }
+    setError(null);
+  };
+
+  const handleOverwriteRegister = async () => {
+    const cleanUsername = username.trim();
+    if (!cleanUsername || !password) {
+      setError('Please enter both username and password.');
+      return;
+    }
+
+    setLoading(true);
+    setStatusText('Generating fresh RSA 2048-bit keypair on device...');
+    try {
+      const { publicKeyPem, keyPair } = await generateRsaKeyPair();
+      setStatusText('Securing private key with password...');
+      const keyBackup = await backupPrivateKeyWithPassword(
+        keyPair.privateKey,
+        password,
+        cleanUsername
+      );
+      setStatusText('Resetting and registering account on device...');
+      const data = await apiOverwriteRegister(
+        cleanUsername,
+        displayName.trim() || cleanUsername,
+        password,
+        publicKeyPem,
+        keyBackup
+      );
+      const pkcs8B64 = await exportPrivateKey(keyPair.privateKey);
+      saveLocalUserPrivateKey(data.user.id, pkcs8B64);
+      localStorage.setItem(STORAGE_KEY_LAST_USER, cleanUsername);
+
+      onAuthenticated({
+        token: data.token,
+        user: data.user,
+        keyPair,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message || 'Failed to overwrite account.');
+    } finally {
+      setLoading(false);
+      setStatusText('');
     }
   };
 
@@ -196,6 +313,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
     (error.toLowerCase().includes('not found') ||
       error.toLowerCase().includes('not registered') ||
       error.toLowerCase().includes('no local accounts'));
+
+  const isIncorrectPasswordError =
+    error && error.toLowerCase().includes('incorrect password');
+
+  const isAlreadyRegisteredError =
+    error && error.toLowerCase().includes('already registered');
 
   return (
     <>
@@ -244,28 +367,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
           </div>
 
           {/* Quick Account Chips if accounts exist on this device */}
-          {serverConfig.mode === 'local' && !isRegister && localUsers.length > 0 && (
+          {serverConfig.mode === 'local' && !isRegister && !isResetMode && localUsers.length > 0 && (
             <div className="mb-3 rounded-lg bg-slate-50 p-2.5 border border-slate-200 dark:bg-slate-800/60 dark:border-slate-700/60 text-xs">
               <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-1.5">
-                Accounts on this device:
+                Accounts on this device (tap to select or × to remove):
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {localUsers.map((u) => (
-                  <button
+                  <div
                     key={u.id}
-                    type="button"
-                    onClick={() => {
-                      setUsername(u.username);
-                      setError(null);
-                    }}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    className={`inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg text-xs font-semibold transition ${
                       username.toLowerCase() === u.username.toLowerCase()
                         ? 'bg-indigo-600 text-white shadow-xs'
                         : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
                     }`}
                   >
-                    @{u.username}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsername(u.username);
+                        setError(null);
+                      }}
+                      className="hover:underline"
+                    >
+                      @{u.username}
+                    </button>
+                    <button
+                      type="button"
+                      title={`Remove @${u.username} from this device`}
+                      onClick={(e) => handleRemoveLocalAccount(e, u.username)}
+                      className="p-0.5 rounded hover:bg-black/20 dark:hover:bg-white/20 text-current opacity-70 hover:opacity-100 transition"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -277,6 +412,54 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span className="leading-relaxed">{error}</span>
               </div>
+
+              {/* Action when incorrect password error occurs */}
+              {isIncorrectPasswordError && (
+                <div className="pl-6 pt-1 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleStartResetPassword(username)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs transition"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reset Password for @{username.trim() || 'User'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleRemoveLocalAccount(e, username)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-700/80 hover:bg-rose-700 text-white font-medium text-xs shadow-xs transition"
+                  >
+                    <X className="h-3 w-3" />
+                    Remove from Device
+                  </button>
+                </div>
+              )}
+
+              {/* Action when username is already registered */}
+              {isAlreadyRegisteredError && (
+                <div className="pl-6 pt-1 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRegister(false);
+                      setIsResetMode(false);
+                      setError(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs transition"
+                  >
+                    <UserCheck className="h-3.5 w-3.5" />
+                    Log in as @{username.trim()}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOverwriteRegister}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-xs transition"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reset & Overwrite on Device
+                  </button>
+                </div>
+              )}
 
               {/* Quick action button to register directly if account wasn't found */}
               {isUserNotFoundError && !isRegister && (
@@ -306,100 +489,217 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                {isRegister ? 'Username' : 'Username or User ID'}
-              </label>
-              <input
-                id="auth-username-input"
-                type="text"
-                required
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={isRegister ? 'alice' : 'alice or E2E-...'}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 transition focus:border-indigo-500 focus:bg-slate-800 focus:text-white focus:outline-none"
-              />
-              {isRegister && (
-                <p className="mt-1 text-[11px] text-slate-500">
-                  3–20 characters, starting with a letter.
+          {isResetMode ? (
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <div className="rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 p-3 text-xs text-indigo-900 dark:text-indigo-200 space-y-1">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reset Password for @{username.trim() || 'Account'}
                 </p>
-              )}
-            </div>
+                <p className="text-[11px] opacity-90">
+                  Set a new password for this device. Your local message history will be preserved.
+                </p>
+              </div>
 
-            {isRegister && (
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Display Name
+                  Account Username
                 </label>
                 <input
-                  id="auth-displayname-input"
                   type="text"
-                  autoCapitalize="words"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Alice Walker"
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 transition focus:border-indigo-500 focus:bg-slate-800 focus:text-white focus:outline-none"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  id="auth-password-input"
-                  type={showPassword ? 'text' : 'password'}
                   required
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-slate-500 transition focus:border-indigo-500 focus:bg-slate-800 focus:text-white focus:outline-none"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="username"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 transition focus:border-indigo-500 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  New Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showResetPassword ? 'text' : 'password'}
+                    required
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    placeholder="At least 3 characters"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-slate-500 transition focus:border-indigo-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPassword(!showResetPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-200"
+                    aria-label={showResetPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Confirm New Password
+                </label>
+                <input
+                  type={showResetPassword ? 'text' : 'password'}
+                  required
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  placeholder="Re-type new password"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 transition focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-50"
+              >
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    {statusText || 'Saving...'}
+                  </span>
+                ) : (
+                  <>
+                    <KeyRound className="h-4 w-4" />
+                    Save New Password & Log In
+                  </>
+                )}
+              </button>
+
+              <div className="pt-2 text-center">
                 <button
                   type="button"
-                  id="toggle-password-visibility-btn"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => {
+                    setIsResetMode(false);
+                    setError(null);
+                  }}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 transition"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  ← Cancel and Return to Log In
                 </button>
               </div>
-            </div>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  {isRegister ? 'Username' : 'Username or User ID'}
+                </label>
+                <input
+                  id="auth-username-input"
+                  type="text"
+                  required
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={isRegister ? 'alice' : 'alice or E2E-...'}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 transition focus:border-indigo-500 focus:bg-slate-800 focus:text-white focus:outline-none"
+                />
+                {isRegister && (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    3–20 characters, starting with a letter.
+                  </p>
+                )}
+              </div>
 
-            <button
-              id="auth-submit-btn"
-              type="submit"
-              disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  {statusText || 'Processing...'}
-                </span>
-              ) : isRegister ? (
-                <>
-                  <KeyRound className="h-4 w-4" />
-                  Generate Keys & Register
-                </>
-              ) : (
-                <>
-                  <UserCheck className="h-4 w-4" />
-                  Log In
-                </>
+              {isRegister && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Display Name
+                  </label>
+                  <input
+                    id="auth-displayname-input"
+                    type="text"
+                    autoCapitalize="words"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Alice Walker"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 transition focus:border-indigo-500 focus:bg-slate-800 focus:text-white focus:outline-none"
+                  />
+                </div>
               )}
-            </button>
-          </form>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Password
+                  </label>
+                  {!isRegister && serverConfig.mode === 'local' && (
+                    <button
+                      type="button"
+                      onClick={() => handleStartResetPassword(username)}
+                      className="text-[11px] text-indigo-400 hover:text-indigo-300 transition"
+                    >
+                      Reset password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    id="auth-password-input"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-slate-500 transition focus:border-indigo-500 focus:bg-slate-800 focus:text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    id="toggle-password-visibility-btn"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                id="auth-submit-btn"
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    {statusText || 'Processing...'}
+                  </span>
+                ) : isRegister ? (
+                  <>
+                    <KeyRound className="h-4 w-4" />
+                    Generate Keys & Register
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="h-4 w-4" />
+                    Log In
+                  </>
+                )}
+              </button>
+            </form>
+          )}
 
           <div className="mt-5 border-t border-slate-200 pt-4 text-center dark:border-slate-800">
             <button

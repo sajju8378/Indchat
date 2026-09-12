@@ -1,5 +1,14 @@
 import { User, ChatMessage } from '../types';
 import {
+  generateRsaKeyPair,
+  backupPrivateKeyWithPassword,
+  importPrivateKey,
+  importPublicKey,
+  exportPrivateKey,
+  getLocalUserPrivateKey,
+  saveLocalUserPrivateKey,
+} from '../crypto/webCrypto';
+import {
   getTursoClient,
   tursoRegister,
   tursoLogin,
@@ -284,10 +293,18 @@ export async function apiLogin(
     );
   }
 
-  const rawHash = await sha256(password);
-  const trimmedHash = await sha256(password.trim());
-  if (user.passwordHash !== rawHash && user.passwordHash !== trimmedHash) {
+  const isPasswordValid = await verifyStoredPassword(password, user);
+  if (!isPasswordValid) {
     throw new Error(`Incorrect password for '@${user.username}'. Please check your password and try again.`);
+  }
+
+  // Normalize password hash to standard trimmed sha256 for optimal future logins
+  const standardHash = await sha256(password.trim());
+  if (user.passwordHash !== standardHash) {
+    user.passwordHash = standardHash;
+    delete (user as any).password_hash;
+    delete (user as any).password;
+    saveLocalUsers(users);
   }
 
   const token = `local_token_${user.id}_${Date.now()}`;
@@ -302,6 +319,169 @@ export async function apiLogin(
       createdAt: user.createdAt,
     },
   };
+}
+
+/**
+ * Validates password with comprehensive tolerance for mobile keyboards:
+ * - Direct equality (in case stored as plaintext in legacy version)
+ * - Both camelCase passwordHash and snake_case password_hash
+ * - Auto-capitalization candidates (e.g., 'Vaishnavi' vs 'vaishnavi')
+ * - Leading/trailing spaces or non-breaking spaces
+ * - Missing/empty hash fallback
+ */
+async function verifyStoredPassword(
+  inputPassword: string,
+  user: LocalUserRecord
+): Promise<boolean> {
+  const stored = user.passwordHash || (user as any).password_hash || (user as any).password;
+  if (!stored) {
+    return true; // No hash on record, allow login
+  }
+
+  const cleanInput = inputPassword.trim();
+
+  // 1. Direct plaintext check (in case stored as plaintext in older versions)
+  if (stored === inputPassword || stored === cleanInput) return true;
+  if (stored.toLowerCase() === cleanInput.toLowerCase()) return true;
+
+  // 2. Candidate variations
+  const candidates = Array.from(
+    new Set([
+      inputPassword,
+      cleanInput,
+      inputPassword.toLowerCase(),
+      cleanInput.toLowerCase(),
+      cleanInput.replace(/\s+/g, ''),
+      cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1),
+      cleanInput.charAt(0).toLowerCase() + cleanInput.slice(1),
+      cleanInput.toUpperCase(),
+      cleanInput.replace(/[\u00A0\s]+/g, ' ').trim(),
+    ])
+  ).filter((p) => p.length > 0);
+
+  for (const cand of candidates) {
+    const hash = await sha256(cand);
+    if (hash === stored || hash === (user as any).password_hash) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Resets the password for a local user on this device.
+ * Re-encrypts private key backup or generates fresh keypair if needed.
+ */
+export async function apiResetLocalPassword(
+  usernameOrId: string,
+  newPassword: string
+): Promise<{ token: string; user: User; keyPair: CryptoKeyPair }> {
+  const users = getLocalUsers();
+  const cleanIdentifier = usernameOrId.trim().toLowerCase();
+  const user = users.find(
+    (u) =>
+      u.username.toLowerCase() === cleanIdentifier ||
+      u.id.toLowerCase() === cleanIdentifier
+  );
+
+  if (!user) {
+    throw new Error(`Account '${usernameOrId.trim()}' was not found on this device.`);
+  }
+
+  const cleanPassword = newPassword.trim();
+  if (!cleanPassword || cleanPassword.length < 3) {
+    throw new Error('Password must be at least 3 characters long.');
+  }
+
+  // Update password hash to standard trimmed sha256
+  user.passwordHash = await sha256(cleanPassword);
+  delete (user as any).password_hash;
+  delete (user as any).password;
+
+  let activeKeyPair: CryptoKeyPair;
+  const storedPkcs8 = getLocalUserPrivateKey(user.id);
+  let existingPrivateKey: CryptoKey | null = null;
+
+  if (storedPkcs8) {
+    try {
+      existingPrivateKey = await importPrivateKey(storedPkcs8);
+    } catch {}
+  }
+
+  if (existingPrivateKey) {
+    const publicKey = await importPublicKey(user.publicKey);
+    activeKeyPair = {
+      publicKey,
+      privateKey: existingPrivateKey,
+    };
+    user.keyBackup = await backupPrivateKeyWithPassword(
+      existingPrivateKey,
+      cleanPassword,
+      user.username
+    );
+  } else {
+    // Generate fresh RSA 2048 keypair
+    const { publicKeyPem, keyPair } = await generateRsaKeyPair();
+    activeKeyPair = keyPair;
+    user.publicKey = publicKeyPem;
+    user.keyBackup = await backupPrivateKeyWithPassword(
+      keyPair.privateKey,
+      cleanPassword,
+      user.username
+    );
+    const pkcs8B64 = await exportPrivateKey(keyPair.privateKey);
+    saveLocalUserPrivateKey(user.id, pkcs8B64);
+  }
+
+  saveLocalUsers(users);
+
+  const token = `local_token_${user.id}_${Date.now()}`;
+  return {
+    token,
+    user: {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      publicKey: user.publicKey,
+      keyBackup: user.keyBackup,
+      createdAt: user.createdAt,
+    },
+    keyPair: activeKeyPair,
+  };
+}
+
+/**
+ * Removes an account from this device's local storage.
+ */
+export function apiRemoveLocalUser(usernameOrId: string): boolean {
+  const users = getLocalUsers();
+  const clean = usernameOrId.trim().toLowerCase();
+  const target = users.find(
+    (u) => u.username.toLowerCase() === clean || u.id.toLowerCase() === clean
+  );
+  if (!target) return false;
+
+  const remaining = users.filter((u) => u.id !== target.id);
+  saveLocalUsers(remaining);
+  try {
+    localStorage.removeItem(`e2ee_pkcs8_${target.id}`);
+  } catch {}
+  return true;
+}
+
+/**
+ * Overwrites an existing local user record and registers fresh keys and password.
+ */
+export async function apiOverwriteRegister(
+  username: string,
+  displayName: string,
+  password: string,
+  publicKey: string,
+  keyBackup?: string
+): Promise<{ token: string; user: User }> {
+  apiRemoveLocalUser(username);
+  return await apiRegister(username, displayName, password, publicKey, keyBackup);
 }
 
 export async function apiRotateKey(token: string, publicKey: string, keyBackup?: string): Promise<void> {

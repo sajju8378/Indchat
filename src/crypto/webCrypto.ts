@@ -128,6 +128,7 @@ export async function backupPrivateKeyWithPassword(
 
 /**
  * Restores an RSA private key from the password-encrypted backup.
+ * Supports candidate variations (trimmed, capitalization, whitespace) for mobile reliability.
  */
 export async function restorePrivateKeyWithPassword(
   backupB64: string,
@@ -139,34 +140,55 @@ export async function restorePrivateKeyWithPassword(
   const ciphertext = combined.slice(12);
 
   const salt = new TextEncoder().encode(`e2ee_salt_${username.toLowerCase().trim()}_v1`);
-  const passwordKey = await window.crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-  const aesKey = await window.crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-    passwordKey,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
 
-  const decryptedPkcs8 = await window.crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    aesKey,
-    ciphertext
-  );
+  const candidates = Array.from(new Set([
+    password,
+    password.trim(),
+    password.toLowerCase(),
+    password.trim().toLowerCase(),
+    password.charAt(0).toUpperCase() + password.slice(1),
+    password.charAt(0).toLowerCase() + password.slice(1),
+    password.replace(/\s+/g, ''),
+  ])).filter((p) => p.length > 0);
 
-  return await window.crypto.subtle.importKey(
-    'pkcs8',
-    decryptedPkcs8,
-    { name: 'RSA-OAEP', hash: 'SHA-256' },
-    true,
-    ['decrypt']
-  );
+  let lastError: unknown = null;
+
+  for (const cand of candidates) {
+    try {
+      const passwordKey = await window.crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(cand),
+        'PBKDF2',
+        false,
+        ['deriveKey']
+      );
+      const aesKey = await window.crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+        passwordKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
+
+      const decryptedPkcs8 = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        aesKey,
+        ciphertext
+      );
+
+      return await window.crypto.subtle.importKey(
+        'pkcs8',
+        decryptedPkcs8,
+        { name: 'RSA-OAEP', hash: 'SHA-256' },
+        true,
+        ['decrypt']
+      );
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Failed to restore private key with provided password.');
 }
 
 /**
