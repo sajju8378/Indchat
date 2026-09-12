@@ -9,6 +9,7 @@
   "orientation": "any",
   "background_color": "#0f172a",
   "theme_color": "#4f46e5",
+  "lang": "en",
   "categories": ["social", "security", "utilities"],
   "icons": [
     {
@@ -34,6 +35,22 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "./screenshot-desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Simple E2EE Chat Desktop Interface"
+    },
+    {
+      "src": "./screenshot-mobile.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Simple E2EE Chat Mobile Interface"
     }
   ]
 }

@@ -12,6 +12,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        injectRegister: 'auto',
         includeAssets: [
           'favicon.ico',
           'apple-touch-icon.png',
@@ -19,6 +20,8 @@ export default defineConfig(() => {
           'pwa-192x192.png',
           'pwa-512x512.png',
           'pwa-maskable-512x512.png',
+          'screenshot-desktop.png',
+          'screenshot-mobile.png',
         ],
         manifest: {
           id: 'com.simplee2ee.chat',
@@ -57,6 +60,22 @@ export default defineConfig(() => {
               sizes: 'any',
               type: 'image/svg+xml',
               purpose: 'any',
+            },
+          ],
+          screenshots: [
+            {
+              src: './screenshot-desktop.png',
+              sizes: '1280x720',
+              type: 'image/png',
+              form_factor: 'wide',
+              label: 'Simple E2EE Chat Desktop Interface',
+            },
+            {
+              src: './screenshot-mobile.png',
+              sizes: '750x1334',
+              type: 'image/png',
+              form_factor: 'narrow',
+              label: 'Simple E2EE Chat Mobile Interface',
             },
           ],
         },
