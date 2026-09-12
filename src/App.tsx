@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Smartphone, Users, MessageSquare, Info } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShieldCheck, Smartphone, MessageSquare } from 'lucide-react';
 import { ActiveSession, User } from './types';
 import { AuthModal } from './components/AuthModal';
 import { RecentChats } from './components/RecentChats';
 import { ChatView } from './components/ChatView';
 import { AndroidInfoModal } from './components/AndroidInfoModal';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 export default function App() {
   const [session, setSession] = useState<ActiveSession | null>(null);
@@ -16,6 +18,7 @@ export default function App() {
     return (
       <div className="relative flex min-h-screen flex-col items-center justify-center bg-slate-900 text-slate-100">
         <div className="absolute top-4 right-4 flex items-center gap-2">
+          <PWAInstallButton />
           <button
             onClick={() => setShowAndroidInfo(true)}
             className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
@@ -30,6 +33,7 @@ export default function App() {
           isOpen={showAndroidInfo}
           onClose={() => setShowAndroidInfo(false)}
         />
+        <OfflineIndicator />
       </div>
     );
   }
@@ -53,6 +57,8 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
+          <PWAInstallButton />
+
           <button
             onClick={() => setShowAndroidInfo(true)}
             className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
@@ -122,6 +128,7 @@ export default function App() {
         isOpen={showAndroidInfo}
         onClose={() => setShowAndroidInfo(false)}
       />
+      <OfflineIndicator />
     </div>
   );
 }

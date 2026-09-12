@@ -2,17 +2,47 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Simple E2EE Chat</title>
-    <meta name="description" content="Complete production-ready Android and Web E2EE messenger with zero-knowledge backend, RSA-OAEP + AES-256-GCM encryption, delivery and read receipts, and encrypted local storage." />
+    <meta name="description" content="Zero-knowledge end-to-end encrypted messaging with client-side RSA-OAEP SHA-256, AES-256-GCM, delivery receipts, and photo sharing." />
+    
+    <!-- PWA & Mobile Meta Tags for PWABuilder & App Stores -->
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="E2EE Chat" />
+    <meta name="application-name" content="Simple E2EE Chat" />
+    
+    <!-- Manifest Link -->
+    <link rel="manifest" href="./manifest.json" />
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./pwa-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="./pwa-512x512.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    
+    <!-- OpenGraph / Social -->
     <meta property="og:title" content="Simple E2EE Chat" />
-    <meta property="og:description" content="Complete production-ready Android and Web E2EE messenger with zero-knowledge backend, RSA-OAEP + AES-256-GCM encryption, delivery and read receipts, and encrypted local storage." />
+    <meta property="og:description" content="Zero-knowledge end-to-end encrypted messaging with client-side RSA-OAEP SHA-256, AES-256-GCM, delivery receipts, and photo sharing." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Standalone Service Worker registration for PWABuilder & GitHub Pages
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('./sw.js').then(function(reg) {
+            console.log('[PWA] Service Worker registered with scope:', reg.scope);
+          }).catch(function(err) {
+            console.warn('[PWA] Service Worker registration note:', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
-
