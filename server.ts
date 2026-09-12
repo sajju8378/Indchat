@@ -4,6 +4,8 @@ import { createServer as createViteServer } from 'vite';
 import { initDatabase } from './server/src/database.js';
 import { router as apiRouter } from './server/src/api.js';
 
+process.env.DISABLE_HMR = process.env.DISABLE_HMR || 'true';
+
 const currentDirname = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
 async function startServer() {

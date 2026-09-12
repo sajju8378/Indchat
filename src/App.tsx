@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ShieldCheck, Smartphone, MessageSquare, Server, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldCheck, Smartphone, MessageSquare, Server, Globe, Database } from 'lucide-react';
 import { ActiveSession, User } from './types';
 import { AuthModal } from './components/AuthModal';
 import { RecentChats } from './components/RecentChats';
@@ -9,18 +9,64 @@ import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ServerSettingsModal } from './components/ServerSettingsModal';
 import { getStoredServerConfig, ServerConfig } from './lib/api';
+import { getStoredSession, saveStoredSession, clearStoredSession } from './lib/session';
 
 export default function App() {
   const [session, setSession] = useState<ActiveSession | null>(null);
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [activePeer, setActivePeer] = useState<User | null>(null);
   const [showAndroidInfo, setShowAndroidInfo] = useState(false);
   const [showServerSettings, setShowServerSettings] = useState(false);
   const [serverConfig, setServerConfig] = useState<ServerConfig>(getStoredServerConfig());
 
+  // Attempt restoring session on mount
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const saved = await getStoredSession();
+        if (mounted && saved) {
+          setSession(saved);
+        }
+      } catch (err) {
+        console.warn('Session restoration failed:', err);
+      } finally {
+        if (mounted) {
+          setIsRestoringSession(false);
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleAuthenticated = async (newSession: ActiveSession) => {
+    setSession(newSession);
+    await saveStoredSession(newSession);
+  };
+
+  const handleLogout = () => {
+    clearStoredSession();
+    setSession(null);
+    setActivePeer(null);
+  };
+
+  if (isRestoringSession) {
+    return (
+      <div className="flex h-[100dvh] w-full flex-col items-center justify-center bg-slate-950 text-slate-100">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+          <p className="text-xs text-slate-400">Loading Simple E2EE Chat...</p>
+        </div>
+      </div>
+    );
+  }
+
   // If no session, show AuthModal
   if (!session) {
     return (
-      <div className="relative flex min-h-screen flex-col items-center justify-center bg-slate-900 text-slate-100">
+      <div className="relative flex min-h-[100dvh] w-full flex-col items-center justify-center bg-slate-950 text-slate-100 p-2 sm:p-4">
         <div className="absolute top-4 right-4 flex items-center gap-2">
           <PWAInstallButton />
           <button
@@ -33,7 +79,7 @@ export default function App() {
           </button>
         </div>
 
-        <AuthModal onAuthenticated={(newSession) => setSession(newSession)} />
+        <AuthModal onAuthenticated={handleAuthenticated} />
         <AndroidInfoModal
           isOpen={showAndroidInfo}
           onClose={() => setShowAndroidInfo(false)}
@@ -44,18 +90,22 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-full flex-col bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="flex h-[100dvh] w-full flex-col bg-slate-950 text-slate-100 overflow-hidden">
       {/* Top Application Bar */}
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-5 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
+      <header
+        className={`${
+          activePeer ? 'hidden md:flex' : 'flex'
+        } h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 sm:px-5 shadow-xs`}
+      >
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
             <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="text-sm font-bold tracking-tight text-white">
               Simple E2EE Chat
             </h1>
-            <p className="text-[10px] text-slate-500 hidden sm:block">
+            <p className="text-[10px] text-slate-400 hidden sm:block">
               Zero-Knowledge RSA-2048-OAEP & AES-256-GCM
             </p>
           </div>
@@ -66,10 +116,15 @@ export default function App() {
           <button
             id="header-server-mode-btn"
             onClick={() => setShowServerSettings(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:bg-slate-700"
             title="Backend Server Configuration"
           >
-            {serverConfig.mode === 'local' ? (
+            {serverConfig.mode === 'turso' ? (
+              <>
+                <Database className="h-3.5 w-3.5 text-indigo-400" />
+                <span className="text-[11px] hidden md:inline">Turso DB</span>
+              </>
+            ) : serverConfig.mode === 'local' ? (
               <>
                 <Server className="h-3.5 w-3.5 text-emerald-400" />
                 <span className="text-[11px] hidden md:inline">Local Engine</span>
@@ -87,14 +142,14 @@ export default function App() {
           <button
             id="header-android-guide-btn"
             onClick={() => setShowAndroidInfo(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
           >
-            <Smartphone className="h-4 w-4 text-emerald-500" />
+            <Smartphone className="h-4 w-4 text-emerald-400" />
             <span className="hidden sm:inline">APK Guide</span>
           </button>
 
-          <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-1 text-xs dark:bg-slate-800">
-            <span className="font-semibold text-slate-700 dark:text-slate-300">
+          <div className="flex items-center gap-2 rounded-xl bg-slate-800 px-3 py-1 text-xs border border-slate-700">
+            <span className="font-semibold text-slate-200">
               {session.user.displayName}
             </span>
             <span className="text-slate-400 hidden sm:inline">(@{session.user.username})</span>
@@ -113,10 +168,7 @@ export default function App() {
           <RecentChats
             session={session}
             onSelectPeer={(peer) => setActivePeer(peer)}
-            onLogout={() => {
-              setSession(null);
-              setActivePeer(null);
-            }}
+            onLogout={handleLogout}
             onOpenAndroidInfo={() => setShowAndroidInfo(true)}
           />
         </div>

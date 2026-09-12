@@ -12,7 +12,12 @@ import {
   Lock,
 } from 'lucide-react';
 import { ActiveSession, DecryptedUIMessage, User } from '../types';
-import { decryptEnvelope, encryptEnvelope } from '../crypto/webCrypto';
+import {
+  decryptEnvelope,
+  encryptEnvelope,
+  cacheMessagePlaintext,
+  getCachedMessagePlaintext,
+} from '../crypto/webCrypto';
 import {
   apiGetConversation,
   apiSendMessage,
@@ -62,40 +67,67 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
           let error: string | undefined;
 
           if (isMe) {
-            // My sent message (we store decrypted text locally in cache, or display payload)
-            text = msg.cachedText || '[Sent Encrypted Message]';
-            if (msg.cachedImage) {
-              isImage = true;
-              imageData = msg.cachedImage;
+            // My sent message: check local persistent plaintext cache
+            const cached = getCachedMessagePlaintext(msg.id);
+            if (cached) {
+              text = cached.text;
+              if (cached.isImage) {
+                isImage = true;
+                imageData = cached.imageData;
+              }
+            } else if (msg.cachedText) {
+              text = msg.cachedText;
+              if (msg.cachedImage) {
+                isImage = true;
+                imageData = msg.cachedImage;
+              }
+            } else {
+              text = '[Sent Encrypted Message]';
             }
           } else {
-            // Incoming message to decrypt
-            try {
-              const decryptedPlaintext = await decryptEnvelope(
-                {
-                  encryptedKey: msg.encryptedKey,
-                  ciphertext: msg.ciphertext,
-                  iv: msg.iv,
-                  authTag: msg.authTag,
-                },
-                session.keyPair.privateKey
-              );
-
+            // Incoming message: check persistent cache first for instant load
+            const cached = getCachedMessagePlaintext(msg.id);
+            if (cached) {
+              text = cached.text;
+              if (cached.isImage) {
+                isImage = true;
+                imageData = cached.imageData;
+              }
+            } else {
               try {
-                const parsed = JSON.parse(decryptedPlaintext);
-                if (parsed.type === 'image') {
-                  isImage = true;
-                  imageData = parsed.data;
-                  text = '[Photo]';
-                } else {
+                const decryptedPlaintext = await decryptEnvelope(
+                  {
+                    encryptedKey: msg.encryptedKey,
+                    ciphertext: msg.ciphertext,
+                    iv: msg.iv,
+                    authTag: msg.authTag,
+                  },
+                  session.keyPair.privateKey
+                );
+
+                try {
+                  const parsed = JSON.parse(decryptedPlaintext);
+                  if (parsed.type === 'image') {
+                    isImage = true;
+                    imageData = parsed.data;
+                    text = '[Photo]';
+                  } else {
+                    text = decryptedPlaintext;
+                  }
+                } catch {
                   text = decryptedPlaintext;
                 }
-              } catch {
-                text = decryptedPlaintext;
+
+                // Cache decrypted message for this device
+                cacheMessagePlaintext(msg.id, {
+                  text,
+                  isImage,
+                  imageData,
+                });
+              } catch (err: any) {
+                error = 'Unable to decrypt message (Key mismatch)';
+                text = '[Encrypted message]';
               }
-            } catch (err: any) {
-              error = 'Unable to decrypt message (Key mismatch)';
-              text = '[Encrypted message]';
             }
 
             if (msg.status !== 'read') {
@@ -186,6 +218,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
 
       // 2. Transmit envelope to backend
       const data = await apiSendMessage(session.token, envelope);
+
+      // Cache plaintext locally so sender can always view their own message
+      cacheMessagePlaintext(data.message.id, {
+        text: isImage ? '[Photo]' : payload,
+        isImage,
+        imageData: base64Image,
+      });
 
       // Update message ID with real server ID
       setMessages((prev) =>
@@ -352,7 +391,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
       </div>
 
       {/* Composer */}
-      <div className="border-t border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <div className="border-t border-slate-200 bg-white p-3 safe-bottom dark:border-slate-800 dark:bg-slate-900">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -391,7 +430,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder="Type encrypted message..."
-            className="flex-1 rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 transition focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder:text-slate-400 transition focus:border-indigo-500 focus:bg-slate-800 focus:text-white focus:outline-none"
           />
 
           <button

@@ -1,20 +1,38 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
+    <script>
+      // Suppress benign [vite] websocket connection logging in container iframe preview
+      (function() {
+        var origErr = console.error;
+        console.error = function() {
+          if (arguments.length > 0 && typeof arguments[0] === 'string' && arguments[0].indexOf('[vite]') !== -1) {
+            return;
+          }
+          origErr.apply(console, arguments);
+        };
+        var origWarn = console.warn;
+        console.warn = function() {
+          if (arguments.length > 0 && typeof arguments[0] === 'string' && arguments[0].indexOf('[vite]') !== -1) {
+            return;
+          }
+          origWarn.apply(console, arguments);
+        };
+      })();
+    </script>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>Simple E2EE Chat</title>
     <meta name="description" content="Zero-knowledge end-to-end encrypted messaging with client-side RSA-OAEP SHA-256, AES-256-GCM, delivery receipts, and photo sharing." />
     
     <!-- PWA & Mobile Meta Tags for PWABuilder & App Stores -->
-    <meta name="theme-color" content="#4f46e5" />
+    <meta name="theme-color" content="#020617" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="E2EE Chat" />
     <meta name="application-name" content="Simple E2EE Chat" />
-    
-    <!-- PWA & Mobile Meta Tags for PWABuilder & App Stores -->
+    <link rel="manifest" href="./manifest.webmanifest" />
     
     <!-- Icons -->
     <link rel="icon" type="image/svg+xml" href="./icon.svg" />

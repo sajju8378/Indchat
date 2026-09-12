@@ -1,1 +1,66 @@
 @import "tailwindcss";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html, body {
+    height: 100%;
+    height: 100dvh;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    overscroll-behavior-y: none;
+    background-color: #020617;
+    color: #f8fafc;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  #root {
+    height: 100%;
+    height: 100dvh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Prevent mobile web browser white bg and white text glitch */
+  input, textarea, select {
+    user-select: text;
+    color-scheme: dark;
+  }
+
+  /* High contrast dark mode inputs */
+  .dark input,
+  .dark textarea,
+  input.dark-input {
+    background-color: #1e293b !important;
+    color: #f8fafc !important;
+  }
+
+  .dark input:focus,
+  .dark textarea:focus {
+    background-color: #1e293b !important;
+    color: #ffffff !important;
+  }
+
+  /* Prevent autofill styling from turning text white on white */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover, 
+  input:-webkit-autofill:focus, 
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 40px #1e293b inset !important;
+    -webkit-text-fill-color: #f8fafc !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  /* Safe area for mobile navigation bars (PWA feel) */
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
+  }
+}

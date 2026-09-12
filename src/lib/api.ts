@@ -1,10 +1,25 @@
 import { User, ChatMessage } from '../types';
+import {
+  getTursoClient,
+  tursoRegister,
+  tursoLogin,
+  tursoSendMessage,
+  tursoGetConversation,
+  tursoGetRecentConversations,
+  tursoSearchUsers,
+  tursoMarkDelivered,
+  tursoMarkRead,
+  tursoUpdateUserKey,
+  tursoTestConnection,
+} from './tursoClient';
 
-export type ServerMode = 'cloud' | 'local';
+export type ServerMode = 'turso' | 'cloud' | 'local';
 
 export interface ServerConfig {
   mode: ServerMode;
   serverUrl: string;
+  tursoUrl?: string;
+  tursoAuthToken?: string;
 }
 
 const STORAGE_KEY_CONFIG = 'e2ee_server_config';
@@ -20,6 +35,8 @@ export function getStoredServerConfig(): ServerConfig {
       return {
         mode: parsed.mode || 'local',
         serverUrl: parsed.serverUrl || '',
+        tursoUrl: parsed.tursoUrl || '',
+        tursoAuthToken: parsed.tursoAuthToken || '',
       };
     }
   } catch (e) {
@@ -41,11 +58,17 @@ export function getStoredServerConfig(): ServerConfig {
   return {
     mode: isLiveBackendHost ? 'cloud' : 'local',
     serverUrl: '',
+    tursoUrl: '',
+    tursoAuthToken: '',
   };
 }
 
 export function saveServerConfig(config: ServerConfig): void {
   localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
+}
+
+export async function apiTestTurso(url: string, token: string) {
+  return await tursoTestConnection(url, token);
 }
 
 // Helper for SHA-256 in browser
@@ -128,22 +151,43 @@ function saveLocalMessages(msgs: ChatMessage[]): void {
   localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(msgs));
 }
 
+export interface LocalUserInfo {
+  id: string;
+  username: string;
+  displayName: string;
+}
+
+export function getLocalUserList(): LocalUserInfo[] {
+  const users = getLocalUsers();
+  return users.map((u) => ({
+    id: u.id,
+    username: u.username,
+    displayName: u.displayName,
+  }));
+}
+
 // ---------------- UNIFIED API EXPORTS ----------------
 
 export async function apiRegister(
   username: string,
   displayName: string,
   password: string,
-  publicKey: string
+  publicKey: string,
+  keyBackup?: string
 ): Promise<{ token: string; user: User }> {
   const config = getStoredServerConfig();
+
+  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+    return await tursoRegister(client, username, displayName, password, publicKey, keyBackup);
+  }
 
   if (config.mode === 'cloud') {
     try {
       return await safeFetchJson<{ token: string; user: User }>('/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, displayName, password, publicKey }),
+        body: JSON.stringify({ username, displayName, password, publicKey, keyBackup }),
       });
     } catch (err) {
       // If on static host like GitHub Pages without a custom serverUrl, auto-fallback to local mode
@@ -160,15 +204,17 @@ export async function apiRegister(
   const users = getLocalUsers();
   const normalizedUsername = username.trim().toLowerCase();
   if (users.some((u) => u.username.toLowerCase() === normalizedUsername)) {
-    throw new Error('Username is already registered. Please choose another.');
+    throw new Error(`Username '@${username.trim()}' is already registered on this device.`);
   }
 
-  const passwordHash = await sha256(password);
+  // Store trimmed password hash for reliable authentication on mobile keyboards
+  const passwordHash = await sha256(password.trim());
   const newUser: LocalUserRecord = {
     id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
     username: username.trim(),
     displayName: displayName.trim() || username.trim(),
     publicKey,
+    keyBackup,
     passwordHash,
     createdAt: Date.now(),
   };
@@ -184,6 +230,7 @@ export async function apiRegister(
       username: newUser.username,
       displayName: newUser.displayName,
       publicKey: newUser.publicKey,
+      keyBackup: newUser.keyBackup,
       createdAt: newUser.createdAt,
     },
   };
@@ -194,6 +241,11 @@ export async function apiLogin(
   password: string
 ): Promise<{ token: string; user: User }> {
   const config = getStoredServerConfig();
+
+  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+    return await tursoLogin(client, username, password);
+  }
 
   if (config.mode === 'cloud') {
     try {
@@ -216,16 +268,26 @@ export async function apiLogin(
   const users = getLocalUsers();
   const normalizedUsername = username.trim().toLowerCase();
   const user = users.find(
-    (u) => u.username.toLowerCase() === normalizedUsername || u.id === username.trim()
+    (u) =>
+      u.username.toLowerCase() === normalizedUsername ||
+      u.id.toLowerCase() === normalizedUsername
   );
 
   if (!user) {
-    throw new Error('Invalid username or password.');
+    if (users.length === 0) {
+      throw new Error(
+        `Account '@${username.trim()}' not found. In Local Mode, accounts are saved on this device. Tap 'Create one' to register on this phone.`
+      );
+    }
+    throw new Error(
+      `Account '@${username.trim()}' is not registered on this device. Please check spelling or tap 'Create one' to register.`
+    );
   }
 
-  const hash = await sha256(password);
-  if (user.passwordHash !== hash) {
-    throw new Error('Invalid username or password.');
+  const rawHash = await sha256(password);
+  const trimmedHash = await sha256(password.trim());
+  if (user.passwordHash !== rawHash && user.passwordHash !== trimmedHash) {
+    throw new Error(`Incorrect password for '@${user.username}'. Please check your password and try again.`);
   }
 
   const token = `local_token_${user.id}_${Date.now()}`;
@@ -236,13 +298,31 @@ export async function apiLogin(
       username: user.username,
       displayName: user.displayName,
       publicKey: user.publicKey,
+      keyBackup: user.keyBackup,
       createdAt: user.createdAt,
     },
   };
 }
 
-export async function apiRotateKey(token: string, publicKey: string): Promise<void> {
+export async function apiRotateKey(token: string, publicKey: string, keyBackup?: string): Promise<void> {
   const config = getStoredServerConfig();
+
+  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+    const userMatch = token.match(/turso_tok_(\d+)_/);
+    if (userMatch) {
+      // Find session user
+      const sess = await client.execute({
+        sql: 'SELECT user_id FROM sessions WHERE token = ?',
+        args: [token],
+      });
+      if (sess.rows.length > 0) {
+        await tursoUpdateUserKey(client, String(sess.rows[0].user_id), publicKey, keyBackup);
+      }
+    }
+    return;
+  }
+
   if (config.mode === 'cloud') {
     await safeFetchJson('/v1/account/rotate-key', {
       method: 'POST',
@@ -250,7 +330,7 @@ export async function apiRotateKey(token: string, publicKey: string): Promise<vo
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ publicKey }),
+      body: JSON.stringify({ publicKey, keyBackup }),
     });
     return;
   }
@@ -264,6 +344,7 @@ export async function apiRotateKey(token: string, publicKey: string): Promise<vo
     const u = users.find((item) => item.id === uid);
     if (u) {
       u.publicKey = publicKey;
+      if (keyBackup) u.keyBackup = keyBackup;
       saveLocalUsers(users);
     }
   }
@@ -274,6 +355,19 @@ export async function apiSearchUsers(
   token?: string
 ): Promise<User[]> {
   const config = getStoredServerConfig();
+
+  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+    let excludeId = '';
+    if (token) {
+      const sess = await client.execute({
+        sql: 'SELECT user_id FROM sessions WHERE token = ?',
+        args: [token],
+      });
+      if (sess.rows.length > 0) excludeId = String(sess.rows[0].user_id);
+    }
+    return await tursoSearchUsers(client, query, excludeId);
+  }
 
   if (config.mode === 'cloud') {
     return safeFetchJson<User[]>(
@@ -315,6 +409,17 @@ export async function apiGetConversation(
 ): Promise<ChatMessage[]> {
   const config = getStoredServerConfig();
 
+  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+    let currentUserId = '';
+    const sess = await client.execute({
+      sql: 'SELECT user_id FROM sessions WHERE token = ?',
+      args: [token],
+    });
+    if (sess.rows.length > 0) currentUserId = String(sess.rows[0].user_id);
+    return await tursoGetConversation(client, currentUserId, peerId);
+  }
+
   if (config.mode === 'cloud') {
     return safeFetchJson<ChatMessage[]>(
       `/v1/conversations/${encodeURIComponent(peerId)}`,
@@ -352,6 +457,17 @@ export async function apiSendMessage(
   }
 ): Promise<{ message: ChatMessage }> {
   const config = getStoredServerConfig();
+
+  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+    let senderId = 'unknown';
+    const sess = await client.execute({
+      sql: 'SELECT user_id FROM sessions WHERE token = ?',
+      args: [token],
+    });
+    if (sess.rows.length > 0) senderId = String(sess.rows[0].user_id);
+    return await tursoSendMessage(client, senderId, payload);
+  }
 
   if (config.mode === 'cloud') {
     return safeFetchJson<{ message: ChatMessage }>('/v1/messages', {
@@ -395,6 +511,18 @@ export async function apiMarkDelivered(
 ): Promise<void> {
   const config = getStoredServerConfig();
 
+  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+    const sess = await client.execute({
+      sql: 'SELECT user_id FROM sessions WHERE token = ?',
+      args: [token],
+    });
+    if (sess.rows.length > 0) {
+      await tursoMarkDelivered(client, String(sess.rows[0].user_id), ids);
+    }
+    return;
+  }
+
   if (config.mode === 'cloud') {
     await safeFetchJson('/v1/messages/delivered', {
       method: 'POST',
@@ -425,6 +553,18 @@ export async function apiMarkRead(
   ids: string[]
 ): Promise<void> {
   const config = getStoredServerConfig();
+
+  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+    const sess = await client.execute({
+      sql: 'SELECT user_id FROM sessions WHERE token = ?',
+      args: [token],
+    });
+    if (sess.rows.length > 0) {
+      await tursoMarkRead(client, String(sess.rows[0].user_id), ids);
+    }
+    return;
+  }
 
   if (config.mode === 'cloud') {
     await safeFetchJson('/v1/messages/read', {
