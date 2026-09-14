@@ -11,6 +11,8 @@ jobs:
   build-apk:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,6 +22,18 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Configure SDK Path
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cat android/local.properties
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -39,8 +53,8 @@ jobs:
       - name: Prepare APK for Download
         run: |
           mkdir -p apk-output
-          cp android/app/build/outputs/apk/debug/app-debug.apk apk-output/Indchat-debug.apk
-          echo "Debug APK built successfully:"
+          cp android/app/build/outputs/apk/debug/*.apk apk-output/Indchat-debug.apk
+          echo "Debug APK prepared successfully:"
           ls -lh apk-output/
 
       - name: Upload Debug APK Artifact
@@ -50,15 +64,31 @@ jobs:
           path: apk-output/Indchat-debug.apk
           retention-days: 30
 
+      - name: Publish Direct Release APK
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          tag_name: latest-apk
+          name: "Indchat Android APK (Latest Debug)"
+          body: |
+            ### 📱 Indchat Android App (Direct Download)
+            Download and install directly on your Android phone without needing to unzip:
+            - Tap **Indchat-debug.apk** below to download.
+            - Tap the downloaded file to install on your device.
+          files: apk-output/Indchat-debug.apk
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
       - name: Post Job Summary
         run: |
           echo "## 📱 Indchat Android Debug APK Ready!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "The debug APK has been successfully compiled directly in GitHub Actions." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📥 How to Download & Install:" >> $GITHUB_STEP_SUMMARY
+          echo "### 📥 How to Download & Install on your Phone:" >> $GITHUB_STEP_SUMMARY
           echo "1. Scroll down to the **Artifacts** section at the bottom of this run summary." >> $GITHUB_STEP_SUMMARY
           echo "2. Click **Indchat-debug-apk** to download the zip file." >> $GITHUB_STEP_SUMMARY
           echo "3. Extract the zip to get \`Indchat-debug.apk\`." >> $GITHUB_STEP_SUMMARY
-          echo "4. Send the APK to your mobile phone or download directly in your mobile browser." >> $GITHUB_STEP_SUMMARY
-          echo "5. Tap the APK to install on Android (enable 'Install unknown apps' if prompted)." >> $GITHUB_STEP_SUMMARY
+          echo "4. Tap the APK to install on your Android device (enable 'Install unknown apps' if prompted)." >> $GITHUB_STEP_SUMMARY
