@@ -22,6 +22,7 @@
     <string name="send">Send</string>
     <string name="menu_save_chat">Save Chat</string>
     <string name="menu_delete_chat">Delete Chat</string>
+    <string name="delete_chat">Delete Chat</string>
     <string name="menu_logout">Log Out</string>
     <string name="unable_to_decrypt">Unable to decrypt this message.</string>
     <string name="key_recovery_warning">This account has no recoverable encrypted key backup. A new device key can be created, but messages encrypted to the previous key cannot be opened.</string>

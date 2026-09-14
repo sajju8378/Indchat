@@ -25,5 +25,8 @@
 
     <color name="tick_grey">#94A3B8</color>
     <color name="tick_blue">#38BDF8</color>
+    <color name="receipt_sent">#94A3B8</color>
+    <color name="receipt_delivered">#94A3B8</color>
+    <color name="receipt_read">#38BDF8</color>
     <color name="error_red">#EF4444</color>
 </resources>
