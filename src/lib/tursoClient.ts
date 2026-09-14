@@ -55,6 +55,19 @@ export async function initTursoTables(client: Client): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);`,
     `CREATE INDEX IF NOT EXISTS idx_messages_recipient_id ON messages(recipient_id);`,
     `CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);`,
+    `CREATE TABLE IF NOT EXISTS call_signals (
+      id TEXT PRIMARY KEY,
+      call_id TEXT NOT NULL,
+      from_user_id TEXT NOT NULL,
+      to_user_id TEXT NOT NULL,
+      from_user_json TEXT NOT NULL,
+      call_type TEXT NOT NULL,
+      signal_type TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_call_signals_to_user ON call_signals(to_user_id, created_at);`,
+    `CREATE INDEX IF NOT EXISTS idx_call_signals_call_id ON call_signals(call_id);`,
   ]);
 }
 
@@ -467,4 +480,78 @@ export async function tursoRemoveUser(
     args: [cleanUsername],
   });
 }
+
+export interface TursoCallSignal {
+  id: string;
+  callId: string;
+  fromUserId: string;
+  toUserId: string;
+  fromUser: User;
+  callType: 'audio' | 'video';
+  signalType: 'offer' | 'answer' | 'candidate' | 'reject' | 'end';
+  payload: any;
+  createdAt: number;
+}
+
+export async function tursoSendCallSignal(
+  client: Client,
+  callId: string,
+  fromUserId: string,
+  toUserId: string,
+  fromUser: User,
+  callType: 'audio' | 'video',
+  signalType: 'offer' | 'answer' | 'candidate' | 'reject' | 'end',
+  payload: any
+): Promise<void> {
+  await initTursoTables(client);
+  const id = `sig_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  await client.execute({
+    sql: `INSERT INTO call_signals (id, call_id, from_user_id, to_user_id, from_user_json, call_type, signal_type, payload_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id,
+      callId,
+      fromUserId,
+      toUserId,
+      JSON.stringify(fromUser),
+      callType,
+      signalType,
+      JSON.stringify(payload),
+      Date.now(),
+    ],
+  });
+}
+
+export async function tursoGetIncomingCallSignals(
+  client: Client,
+  userId: string,
+  since: number
+): Promise<TursoCallSignal[]> {
+  await initTursoTables(client);
+  const result = await client.execute({
+    sql: `SELECT * FROM call_signals WHERE (to_user_id = ? OR from_user_id = ?) AND created_at > ? ORDER BY created_at ASC LIMIT 50`,
+    args: [userId, userId, since],
+  });
+
+  return result.rows.map((row) => ({
+    id: String(row.id),
+    callId: String(row.call_id),
+    fromUserId: String(row.from_user_id),
+    toUserId: String(row.to_user_id),
+    fromUser: JSON.parse(String(row.from_user_json || '{}')),
+    callType: String(row.call_type) as 'audio' | 'video',
+    signalType: String(row.signal_type) as 'offer' | 'answer' | 'candidate' | 'reject' | 'end',
+    payload: JSON.parse(String(row.payload_json || '{}')),
+    createdAt: Number(row.created_at),
+  }));
+}
+
+export async function tursoClearCallSignals(client: Client, callId: string): Promise<void> {
+  await initTursoTables(client);
+  await client.execute({
+    sql: `DELETE FROM call_signals WHERE call_id = ?`,
+    args: [callId],
+  });
+}
+
 

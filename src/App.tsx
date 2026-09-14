@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Smartphone, MessageSquare, Server, Globe, Database } from 'lucide-react';
-import { ActiveSession, User } from './types';
+import { ActiveSession, User, CallType } from './types';
 import { AuthModal } from './components/AuthModal';
 import { RecentChats } from './components/RecentChats';
 import { ChatView } from './components/ChatView';
+import { CallModal } from './components/CallModal';
 import { AndroidInfoModal } from './components/AndroidInfoModal';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -11,6 +12,15 @@ import { ServerSettingsModal } from './components/ServerSettingsModal';
 import { FullscreenHeaderBanner } from './components/FullscreenHeaderBanner';
 import { getStoredServerConfig, ServerConfig } from './lib/api';
 import { getStoredSession, saveStoredSession, clearStoredSession } from './lib/session';
+import { webrtcManager } from './lib/webrtcClient';
+
+interface GlobalActiveCall {
+  callId?: string;
+  peer: User;
+  callType: CallType;
+  isIncoming: boolean;
+  offer?: RTCSessionDescriptionInit;
+}
 
 export default function App() {
   const [session, setSession] = useState<ActiveSession | null>(null);
@@ -19,6 +29,34 @@ export default function App() {
   const [showAndroidInfo, setShowAndroidInfo] = useState(false);
   const [showServerSettings, setShowServerSettings] = useState(false);
   const [serverConfig, setServerConfig] = useState<ServerConfig>(getStoredServerConfig());
+  const [globalCall, setGlobalCall] = useState<GlobalActiveCall | null>(null);
+
+  // Connect WebRTC signaling whenever authenticated session is active
+  useEffect(() => {
+    if (!session) return;
+
+    webrtcManager.connectSignaling(session.user);
+
+    webrtcManager.setEventListeners({
+      onIncomingCall: (callId, fromUser, callType, offer) => {
+        setGlobalCall({
+          callId,
+          peer: fromUser,
+          callType,
+          isIncoming: true,
+          offer,
+        });
+      },
+    });
+  }, [session]);
+
+  const handleStartCall = (peer: User, callType: CallType) => {
+    setGlobalCall({
+      peer,
+      callType,
+      isIncoming: false,
+    });
+  };
 
   // Attempt restoring session on mount with strict timeout fallback
   useEffect(() => {
@@ -56,6 +94,8 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    webrtcManager.destroy();
+    setGlobalCall(null);
     clearStoredSession();
     setSession(null);
     setActivePeer(null);
@@ -197,6 +237,7 @@ export default function App() {
               session={session}
               peer={activePeer}
               onBack={() => setActivePeer(null)}
+              onStartCall={handleStartCall}
             />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center bg-slate-50 p-6 text-center dark:bg-slate-950">
@@ -214,6 +255,18 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {globalCall && (
+        <CallModal
+          isOpen={!!globalCall}
+          peer={globalCall.peer}
+          callType={globalCall.callType}
+          isIncoming={globalCall.isIncoming}
+          callId={globalCall.callId}
+          offer={globalCall.offer}
+          onEndCall={() => setGlobalCall(null)}
+        />
+      )}
 
       <ServerSettingsModal
         isOpen={showServerSettings}

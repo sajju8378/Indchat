@@ -1,7 +1,9 @@
 import express from 'express';
+import http from 'http';
 import dotenv from 'dotenv';
 import { initDatabase } from './database.js';
 import { router } from './api.js';
+import { setupSignaling } from './signaling.js';
 
 dotenv.config();
 
@@ -28,11 +30,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Mount API router
 app.use(router);
 
-// Start listening if run directly
+// Start listening with WebSocket signaling if run directly
+let server = null;
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Indchat Server] running on http://0.0.0.0:${PORT}`);
+  server = http.createServer(app);
+  setupSignaling(server);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Indchat Server] and WebRTC signaling running on http://0.0.0.0:${PORT}`);
   });
 }
 
 export default app;
+

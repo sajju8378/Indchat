@@ -32,9 +32,10 @@ interface ChatViewProps {
   session: ActiveSession;
   peer: User;
   onBack: () => void;
+  onStartCall?: (peer: User, callType: CallType) => void;
 }
 
-export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => {
+export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack, onStartCall }) => {
   const [messages, setMessages] = useState<DecryptedUIMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
@@ -309,7 +310,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
           {/* Audio Call Button */}
           <button
             id="chat-audio-call-btn"
-            onClick={() => setActiveCallType('audio')}
+            onClick={() => {
+              if (onStartCall) {
+                onStartCall(peer, 'audio');
+              } else {
+                setActiveCallType('audio');
+              }
+            }}
             className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-emerald-400 hover:bg-slate-700 hover:text-emerald-300 transition"
             title={`Audio Call @${peer.username}`}
           >
@@ -320,7 +327,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
           {/* Video Call Button */}
           <button
             id="chat-video-call-btn"
-            onClick={() => setActiveCallType('video')}
+            onClick={() => {
+              if (onStartCall) {
+                onStartCall(peer, 'video');
+              } else {
+                setActiveCallType('video');
+              }
+            }}
             className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-indigo-400 hover:bg-slate-700 hover:text-indigo-300 transition"
             title={`Video Call @${peer.username}`}
           >
@@ -550,12 +563,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
           </div>
         </div>
       )}
-      {/* Audio / Video Call Interface */}
-      {activeCallType && (
+      {/* Audio / Video Call Interface (Standalone fallback if onStartCall is not provided) */}
+      {!onStartCall && activeCallType && (
         <CallModal
           isOpen={!!activeCallType}
           peer={peer}
           callType={activeCallType}
+          isIncoming={false}
           onEndCall={() => setActiveCallType(null)}
         />
       )}

@@ -25,6 +25,7 @@ import {
   generateSessionToken,
   generateMessageId,
 } from './crypto.js';
+import { getActiveCalls, isUserOnline } from './signaling.js';
 
 export const router = express.Router();
 
@@ -294,3 +295,114 @@ router.post('/v1/account/key-backup', requireAuth, (req, res) => {
     },
   });
 });
+
+// Check peer online / call status
+router.get('/v1/calls/online/:userId', requireAuth, (req, res) => {
+  const online = isUserOnline(req.params.userId);
+  res.json({ ok: true, userId: req.params.userId, online });
+});
+
+// REST Fallback for WebRTC Signaling
+router.post('/v1/calls/offer', requireAuth, (req, res) => {
+  const { callId, toUserId, callType, offer } = req.body || {};
+  if (!callId || !toUserId || !offer) {
+    return res.status(400).json({ error: 'callId, toUserId, and offer are required.' });
+  }
+
+  const activeCalls = getActiveCalls();
+  activeCalls.set(callId, {
+    callId,
+    fromUser: {
+      id: req.user.id,
+      username: req.user.username,
+      displayName: req.user.display_name,
+    },
+    toUserId,
+    callType: callType || 'audio',
+    offer,
+    answer: null,
+    candidates: [],
+    status: 'ringing',
+    updatedAt: Date.now(),
+  });
+
+  res.json({ ok: true, callId, status: 'ringing' });
+});
+
+router.get('/v1/calls/poll', requireAuth, (req, res) => {
+  const userId = req.user.id;
+  const activeCalls = getActiveCalls();
+
+  // Find any incoming calls for this user
+  let incoming = null;
+  for (const [callId, call] of activeCalls.entries()) {
+    if (call.toUserId === userId && call.status === 'ringing') {
+      incoming = call;
+      break;
+    }
+  }
+
+  // Also check if any call initiated by this user has an answer or has ended
+  let myCall = null;
+  const requestedCallId = req.query.callId;
+  if (requestedCallId && activeCalls.has(requestedCallId)) {
+    myCall = activeCalls.get(requestedCallId);
+  }
+
+  res.json({
+    ok: true,
+    incoming,
+    myCall,
+  });
+});
+
+router.post('/v1/calls/answer', requireAuth, (req, res) => {
+  const { callId, answer } = req.body || {};
+  const activeCalls = getActiveCalls();
+  const call = activeCalls.get(callId);
+  if (!call) {
+    return res.status(404).json({ error: 'Call not found or expired.' });
+  }
+
+  call.answer = answer;
+  call.status = 'connected';
+  call.updatedAt = Date.now();
+  res.json({ ok: true, status: 'connected' });
+});
+
+const handleCandidate = (req, res) => {
+  const { callId, toUserId, candidate } = req.body || {};
+  const activeCalls = getActiveCalls();
+  const call = activeCalls.get(callId);
+  if (call) {
+    call.candidates.push({ toUserId, candidate });
+    call.updatedAt = Date.now();
+  }
+  res.json({ ok: true });
+};
+
+router.post('/v1/calls/candidate', requireAuth, handleCandidate);
+router.post('/v1/calls/ice-candidate', requireAuth, handleCandidate);
+
+router.post('/v1/calls/reject', requireAuth, (req, res) => {
+  const { callId } = req.body || {};
+  const activeCalls = getActiveCalls();
+  const call = activeCalls.get(callId);
+  if (call) {
+    call.status = 'rejected';
+    call.updatedAt = Date.now();
+  }
+  res.json({ ok: true, status: 'rejected' });
+});
+
+router.post('/v1/calls/end', requireAuth, (req, res) => {
+  const { callId } = req.body || {};
+  const activeCalls = getActiveCalls();
+  const call = activeCalls.get(callId);
+  if (call) {
+    call.status = 'ended';
+    call.updatedAt = Date.now();
+  }
+  res.json({ ok: true, status: 'ended' });
+});
+

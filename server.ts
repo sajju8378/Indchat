@@ -1,8 +1,10 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { initDatabase } from './server/src/database.js';
 import { router as apiRouter } from './server/src/api.js';
+import { setupSignaling } from './server/src/signaling.js';
 
 process.env.DISABLE_HMR = process.env.DISABLE_HMR || 'true';
 
@@ -50,8 +52,12 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Indchat] server running on http://localhost:${PORT}`);
+  // Create HTTP server & attach real-time WebRTC WebSocket signaling
+  const httpServer = http.createServer(app);
+  setupSignaling(httpServer);
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Indchat] server and WebRTC signaling running on http://0.0.0.0:${PORT}`);
   });
 }
 
