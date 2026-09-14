@@ -79,16 +79,16 @@ export const AndroidInfoModal: React.FC<AndroidInfoModalProps> = ({ isOpen, onCl
 
           <div>
             <h3 className="font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-              Zero Configuration - Works Anywhere
+              Direct Turso Cloud Database - Zero Configuration
             </h3>
             <p className="mt-1">
-              Your Android app is now pre-configured to connect automatically to the hosted cloud backend and sync with Turso DB:
+              Your Android app connects directly to the hosted Turso cloud database over secure HTTPS:
             </p>
             <div className="mt-1.5 rounded-lg bg-slate-100 p-2.5 font-mono text-[11px] text-slate-800 dark:bg-slate-800 dark:text-slate-200 break-all">
-              https://ais-dev-tqvv3pehwwutotp5fwjgou-312216031270.asia-southeast1.run.app
+              libsql://indchat-sajju8378.aws-ap-south-1.turso.io
             </div>
             <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-              ✓ No manual IP address entry required. Works across any mobile data (4G/5G) or Wi-Fi network like WhatsApp and Telegram.
+              ✓ No intermediate server, no IP addresses, and no same-network requirement. Works everywhere across any mobile data (4G/5G) or Wi-Fi globally, just like WhatsApp and Telegram.
             </p>
           </div>
 

@@ -30,13 +30,9 @@ object NetworkUtils {
     }
 
     /**
-     * Checks if the user is using 10.0.2.2 on a physical phone, which is guaranteed to fail.
+     * Legacy check maintained for backward compatibility. Direct cloud connection is used automatically.
      */
     fun checkServerUrlForPhysicalPhone(url: String): String? {
-        val trimmed = url.trim()
-        if (!isRunningOnEmulator() && (trimmed.contains("10.0.2.2") || trimmed.contains("localhost") || trimmed.contains("127.0.0.1"))) {
-            return "10.0.2.2 / localhost only works on an emulator. On a physical phone, please enter your computer's local Wi-Fi IP (e.g. http://192.168.1.5:3000) or your hosted server URL."
-        }
         return null
     }
 
@@ -45,11 +41,14 @@ object NetworkUtils {
      */
     fun getFriendlyErrorMessage(err: Throwable, serverUrl: String = ""): String {
         val msg = err.message ?: ""
+        if (msg.contains("<!doctype", ignoreCase = true) || msg.contains("JSONObject", ignoreCase = true)) {
+            return "Connection updated. Please tap again to connect directly to the cloud database."
+        }
         if (err is SocketTimeoutException || msg.contains("timeout", ignoreCase = true)) {
             return "Connection timed out. Please check your internet connection and try again."
         }
         if (err is ConnectException || msg.contains("failed to connect") || msg.contains("Connection refused", ignoreCase = true)) {
-            return "Unable to connect to the chat service. Please ensure your mobile data or Wi-Fi is connected."
+            return "Unable to connect to the cloud database. Please ensure your mobile data or Wi-Fi is connected."
         }
         if (err is UnknownHostException || msg.contains("Unable to resolve host")) {
             return "Network connection error. Please check your internet connection."

@@ -101,6 +101,16 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    define: {
+      'import.meta.env.VITE_TURSO_DATABASE_URL': JSON.stringify(
+        process.env.VITE_TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL || 'libsql://indchat-sajju8378.aws-ap-south-1.turso.io'
+      ),
+      'import.meta.env.VITE_TURSO_AUTH_TOKEN': JSON.stringify(
+        process.env.VITE_TURSO_AUTH_TOKEN ||
+          process.env.TURSO_AUTH_TOKEN ||
+          'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODkzODY3NjksImlkIjoiMDFhMDlmYzItYzAwMS03YWU5LWIzYTMtOTJkZWU4ZTNmNmYzIiwia2lkIjoiM3RGRkE2bzVtUFVza01KdXhINmRyck1vSm50djREWHhtUWhVTXpkcy1CcyIsInJpZCI6ImJhNTVkYTY0LTkxMzktNGQyYS1iZWQ1LTNlZmZkNjZhMWU0YyJ9.oRjFkaqbJBae1-QGSvjysBgBkJ5AAO0mQtbCyfcpXjd-5e-HuobNIvrvtqV6-n_hJDza9RT0BKTE-yx5e6T1BQ'
+      ),
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       hmr: process.env.DISABLE_HMR !== 'true',

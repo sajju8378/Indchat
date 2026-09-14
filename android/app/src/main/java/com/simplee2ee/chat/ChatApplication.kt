@@ -36,10 +36,15 @@ class ChatApplication : Application() {
         if (savedToken != null) {
             apiClient.authToken = savedToken
         }
+        val savedUserId = prefs.getString(PREF_USER_ID, null)
+        if (savedUserId != null) {
+            apiClient.currentUserId = savedUserId
+        }
     }
 
     fun saveAuthSession(token: String, user: User) {
         apiClient.authToken = token
+        apiClient.currentUserId = user.id
         prefs.edit()
             .putString(PREF_AUTH_TOKEN, token)
             .putString(PREF_USER_ID, user.id)
@@ -59,6 +64,7 @@ class ChatApplication : Application() {
 
     fun clearAuthSession() {
         apiClient.authToken = null
+        apiClient.currentUserId = null
         prefs.edit()
             .remove(PREF_AUTH_TOKEN)
             .remove(PREF_USER_ID)
@@ -76,7 +82,7 @@ class ChatApplication : Application() {
 
     fun getServerUrl(): String {
         val saved = prefs.getString(PREF_SERVER_URL, null)
-        if (saved.isNullOrBlank() || saved.contains("10.0.2.2") || saved.contains("localhost") || saved.contains("127.0.0.1")) {
+        if (saved.isNullOrBlank() || saved.contains("10.0.2.2") || saved.contains("localhost") || saved.contains("127.0.0.1") || saved.contains("run.app")) {
             return DEFAULT_SERVER_URL
         }
         return saved
@@ -93,12 +99,12 @@ class ChatApplication : Application() {
         private const val PREF_PUBLIC_KEY = "public_key"
         private const val PREF_SERVER_URL = "server_url"
 
-        // Default Cloud Run backend URL accessible from any phone on mobile data or Wi-Fi
-        const val DEFAULT_SERVER_URL = "https://ais-dev-tqvv3pehwwutotp5fwjgou-312216031270.asia-southeast1.run.app"
+        // Default direct Turso cloud database endpoint accessible anywhere globally
+        const val DEFAULT_SERVER_URL = ApiClient.DEFAULT_TURSO_PIPELINE_URL
 
         fun normalizeUrl(input: String): String {
             var trimmed = input.trim().removeSuffix("/")
-            if (trimmed.isEmpty() || trimmed.contains("10.0.2.2") || trimmed.contains("localhost") || trimmed.contains("127.0.0.1")) {
+            if (trimmed.isEmpty() || trimmed.contains("10.0.2.2") || trimmed.contains("localhost") || trimmed.contains("127.0.0.1") || trimmed.contains("run.app")) {
                 return DEFAULT_SERVER_URL
             }
             if (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true)) {

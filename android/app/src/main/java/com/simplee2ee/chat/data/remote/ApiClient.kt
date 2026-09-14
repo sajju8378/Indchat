@@ -12,11 +12,21 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
-class ApiClient(var baseUrl: String) {
+/**
+ * Direct Turso Cloud Database API Client.
+ *
+ * Connects directly to the hosted Turso cloud database over secure HTTPS.
+ * Eliminates intermediate servers, local IP addresses, emulator ports, and same-network requirements.
+ * Works seamlessly on any mobile network (4G/5G) or Wi-Fi globally, just like WhatsApp and Telegram.
+ */
+class ApiClient(var baseUrl: String = DEFAULT_TURSO_PIPELINE_URL) {
 
     var authToken: String? = null
+    var currentUserId: String? = null
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -26,20 +36,139 @@ class ApiClient(var baseUrl: String) {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    private fun newRequestBuilder(path: String): Request.Builder {
-        var base = baseUrl.trim().removeSuffix("/")
-        if (!base.startsWith("http://", ignoreCase = true) && !base.startsWith("https://", ignoreCase = true)) {
-            base = "http://$base"
-        }
-        val cleanPath = path.removePrefix("/")
-        val url = "$base/$cleanPath"
-        val builder = Request.Builder().url(url)
-        authToken?.let {
-            builder.addHeader("Authorization", "Bearer $it")
-        }
-        return builder
+    companion object {
+        const val DEFAULT_TURSO_DATABASE_URL = "libsql://indchat-sajju8378.aws-ap-south-1.turso.io"
+        const val DEFAULT_TURSO_PIPELINE_URL = "https://indchat-sajju8378.aws-ap-south-1.turso.io/v2/pipeline"
+        const val DEFAULT_TURSO_AUTH_TOKEN =
+            "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODkzODY3NjksImlkIjoiMDFhMDlmYzItYzAwMS03YWU5LWIzYTMtOTJkZWU4ZTNmNmYzIiwia2lkIjoiM3RGRkE2bzVtUFVza01KdXhINmRyck1vSm50djREWHhtUWhVTXpkcy1CcyIsInJpZCI6ImJhNTVkYTY0LTkxMzktNGQyYS1iZWQ1LTNlZmZkNjZhMWU0YyJ9.oRjFkaqbJBae1-QGSvjysBgBkJ5AAO0mQtbCyfcpXjd-5e-HuobNIvrvtqV6-n_hJDza9RT0BKTE-yx5e6T1BQ"
     }
 
+    private fun sha256(input: String): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest(input.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Executes parameterized SQL directly on Turso DB via the v2 pipeline API.
+     */
+    private fun executeTursoSql(sql: String, args: List<Any?> = emptyList()): List<Map<String, Any?>> {
+        val pipelineUrl = if (baseUrl.contains("turso.io")) {
+            if (baseUrl.endsWith("/v2/pipeline")) baseUrl else "${baseUrl.removeSuffix("/")}/v2/pipeline"
+        } else {
+            DEFAULT_TURSO_PIPELINE_URL
+        }
+
+        val requestObj = JSONObject().apply {
+            put("type", "execute")
+            val stmt = JSONObject().apply {
+                put("sql", sql)
+                val argsArray = JSONArray()
+                for (arg in args) {
+                    val cell = JSONObject()
+                    when (arg) {
+                        null -> {
+                            cell.put("type", "null")
+                        }
+                        is Number -> {
+                            cell.put("type", "integer")
+                            cell.put("value", arg.toString())
+                        }
+                        else -> {
+                            cell.put("type", "text")
+                            cell.put("value", arg.toString())
+                        }
+                    }
+                    argsArray.put(cell)
+                }
+                put("args", argsArray)
+            }
+            put("stmt", stmt)
+        }
+
+        val rootJson = JSONObject().apply {
+            put("requests", JSONArray().put(requestObj))
+        }
+
+        val request = Request.Builder()
+            .url(pipelineUrl)
+            .addHeader("Authorization", "Bearer $DEFAULT_TURSO_AUTH_TOKEN")
+            .addHeader("Content-Type", "application/json")
+            .post(rootJson.toString().toRequestBody(jsonMediaType))
+            .build()
+
+        val response = client.newCall(request).execute()
+        val body = response.body?.string() ?: ""
+
+        if (!response.isSuccessful) {
+            val errMessage = try {
+                val errObj = JSONObject(body)
+                errObj.optString("error", "Database error (HTTP ${response.code})")
+            } catch (e: Exception) {
+                "Database error (HTTP ${response.code})"
+            }
+            throw IOException(errMessage)
+        }
+
+        val resObj = JSONObject(body)
+        val resultsArray = resObj.optJSONArray("results")
+            ?: throw IOException("Invalid database response format.")
+
+        if (resultsArray.length() == 0) return emptyList()
+
+        val firstResult = resultsArray.getJSONObject(0)
+        val resultType = firstResult.optString("type")
+
+        if (resultType == "error") {
+            val errObj = firstResult.optJSONObject("error")
+            val rawMsg = errObj?.optString("message") ?: "Database query failed."
+            if (rawMsg.contains("UNIQUE constraint failed: users.username", ignoreCase = true)) {
+                throw IOException("This username is already taken. Please choose another username.")
+            }
+            throw IOException(rawMsg)
+        }
+
+        val responseData = firstResult.optJSONObject("response") ?: return emptyList()
+        val execResult = responseData.optJSONObject("result") ?: return emptyList()
+        val colsArray = execResult.optJSONArray("cols") ?: return emptyList()
+        val rowsArray = execResult.optJSONArray("rows") ?: return emptyList()
+
+        val colNames = mutableListOf<String>()
+        for (i in 0 until colsArray.length()) {
+            colNames.add(colsArray.getJSONObject(i).getString("name"))
+        }
+
+        val list = mutableListOf<Map<String, Any?>>()
+        for (r in 0 until rowsArray.length()) {
+            val rowCells = rowsArray.getJSONArray(r)
+            val rowMap = mutableMapOf<String, Any?>()
+            for (c in 0 until rowCells.length()) {
+                val cell = rowCells.getJSONObject(c)
+                val type = cell.optString("type")
+                val colName = colNames[c]
+                when (type) {
+                    "null" -> rowMap[colName] = null
+                    "integer" -> rowMap[colName] = cell.optString("value").toLongOrNull() ?: 0L
+                    else -> rowMap[colName] = cell.optString("value")
+                }
+            }
+            list.add(rowMap)
+        }
+        return list
+    }
+
+    private fun verifyPasswordMatch(candidate: String, storedHash: String?): Boolean {
+        if (storedHash.isNullOrBlank()) return false
+        val hashedCandidate = sha256(candidate)
+        if (storedHash.equals(hashedCandidate, ignoreCase = true)) return true
+        if (storedHash.equals(candidate)) return true
+        if (storedHash.equals(sha256(candidate.trim()), ignoreCase = true)) return true
+        return false
+    }
+
+    /**
+     * Registers a new user directly in Turso cloud database.
+     */
     suspend fun register(
         username: String,
         displayName: String,
@@ -48,39 +177,45 @@ class ApiClient(var baseUrl: String) {
         keyBackup: String?
     ): Result<Pair<String, User>> = withContext(Dispatchers.IO) {
         try {
-            val json = JSONObject().apply {
-                put("username", username)
-                put("displayName", displayName)
-                put("password", password)
-                put("publicKey", publicKey)
-                keyBackup?.let { put("keyBackup", it) }
+            val cleanUsername = username.trim()
+            val cleanDisplay = displayName.trim().ifBlank { cleanUsername }
+
+            // 1. Check if user exists
+            val existing = executeTursoSql(
+                "SELECT id FROM users WHERE username = ? COLLATE NOCASE",
+                listOf(cleanUsername)
+            )
+            if (existing.isNotEmpty()) {
+                return@withContext Result.failure(IOException("Username '@$cleanUsername' is already taken. Please choose another."))
             }
 
-            val request = newRequestBuilder("v1/auth/register")
-                .post(json.toString().toRequestBody(jsonMediaType))
-                .build()
+            // 2. Insert new user into Turso DB
+            val userId = "E2E-" + UUID.randomUUID().toString().substring(0, 8).uppercase()
+            val passHash = sha256(password)
+            val now = System.currentTimeMillis()
 
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
+            executeTursoSql(
+                "INSERT INTO users (id, username, display_name, password_hash, public_key, key_backup, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                listOf(userId, cleanUsername, cleanDisplay, passHash, publicKey, keyBackup, now, now)
+            )
 
-            if (!response.isSuccessful) {
-                val errorMsg = try {
-                    JSONObject(body).optString("error", "Registration failed with status ${response.code}")
-                } catch (e: Exception) {
-                    "Registration failed: ${response.message}"
-                }
-                return@withContext Result.failure(IOException(errorMsg))
-            }
+            // 3. Create session token
+            val token = "turso_tok_${System.currentTimeMillis()}_${UUID.randomUUID().toString().substring(0, 8)}"
+            val expiresAt = now + (30L * 24 * 60 * 60 * 1000)
+            executeTursoSql(
+                "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                listOf(token, userId, now, expiresAt)
+            )
 
-            val resObj = JSONObject(body)
-            val token = resObj.getString("token")
-            val userObj = resObj.getJSONObject("user")
+            authToken = token
+            currentUserId = userId
+
             val user = User(
-                id = userObj.getString("id"),
-                username = userObj.getString("username"),
-                displayName = userObj.getString("displayName"),
-                publicKey = userObj.getString("publicKey"),
-                keyBackup = userObj.optString("keyBackup", null)
+                id = userId,
+                username = cleanUsername,
+                displayName = cleanDisplay,
+                publicKey = publicKey,
+                keyBackup = keyBackup
             )
             Result.success(Pair(token, user))
         } catch (e: Exception) {
@@ -88,39 +223,52 @@ class ApiClient(var baseUrl: String) {
         }
     }
 
+    /**
+     * Logs in an existing user using Turso cloud database.
+     */
     suspend fun login(username: String, password: String): Result<Pair<String, User>> =
         withContext(Dispatchers.IO) {
             try {
-                val json = JSONObject().apply {
-                    put("username", username)
-                    put("password", password)
+                val cleanInput = username.trim()
+                val rows = executeTursoSql(
+                    "SELECT id, username, display_name, password_hash, public_key, key_backup FROM users WHERE username = ? COLLATE NOCASE OR id = ? LIMIT 1",
+                    listOf(cleanInput, cleanInput)
+                )
+
+                if (rows.isEmpty()) {
+                    return@withContext Result.failure(IOException("Account not found. Please check your username or register."))
                 }
 
-                val request = newRequestBuilder("v1/auth/login")
-                    .post(json.toString().toRequestBody(jsonMediaType))
-                    .build()
-
-                val response = client.newCall(request).execute()
-                val body = response.body?.string() ?: ""
-
-                if (!response.isSuccessful) {
-                    val errorMsg = try {
-                        JSONObject(body).optString("error", "Incorrect username or password.")
-                    } catch (e: Exception) {
-                        "Login failed: ${response.message}"
-                    }
-                    return@withContext Result.failure(IOException(errorMsg))
+                val row = rows[0]
+                val storedHash = row["password_hash"] as? String ?: ""
+                if (!verifyPasswordMatch(password, storedHash)) {
+                    return@withContext Result.failure(IOException("Incorrect password. Please try again."))
                 }
 
-                val resObj = JSONObject(body)
-                val token = resObj.getString("token")
-                val userObj = resObj.getJSONObject("user")
+                val userId = row["id"] as? String ?: ""
+                val foundUsername = row["username"] as? String ?: cleanInput
+                val foundDisplayName = row["display_name"] as? String ?: foundUsername
+                val foundPublicKey = row["public_key"] as? String ?: ""
+                val foundKeyBackup = row["key_backup"] as? String
+
+                val now = System.currentTimeMillis()
+                val token = "turso_tok_${System.currentTimeMillis()}_${UUID.randomUUID().toString().substring(0, 8)}"
+                val expiresAt = now + (30L * 24 * 60 * 60 * 1000)
+
+                executeTursoSql(
+                    "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                    listOf(token, userId, now, expiresAt)
+                )
+
+                authToken = token
+                currentUserId = userId
+
                 val user = User(
-                    id = userObj.getString("id"),
-                    username = userObj.getString("username"),
-                    displayName = userObj.getString("displayName"),
-                    publicKey = userObj.getString("publicKey"),
-                    keyBackup = userObj.optString("keyBackup", null)
+                    id = userId,
+                    username = foundUsername,
+                    displayName = foundDisplayName,
+                    publicKey = foundPublicKey,
+                    keyBackup = foundKeyBackup
                 )
                 Result.success(Pair(token, user))
             } catch (e: Exception) {
@@ -130,40 +278,46 @@ class ApiClient(var baseUrl: String) {
 
     suspend fun logout(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val request = newRequestBuilder("v1/auth/logout")
-                .post("{}".toRequestBody(jsonMediaType))
-                .build()
-            client.newCall(request).execute()
+            authToken?.let { token ->
+                executeTursoSql("DELETE FROM sessions WHERE token = ?", listOf(token))
+            }
             authToken = null
+            currentUserId = null
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            authToken = null
+            currentUserId = null
+            Result.success(Unit)
         }
     }
 
     suspend fun searchUsers(query: String): Result<List<User>> = withContext(Dispatchers.IO) {
         try {
-            val request = newRequestBuilder("v1/users/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}")
-                .get()
-                .build()
-
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: "[]"
-
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(IOException("User search failed: ${response.code}"))
+            val cleanQuery = query.trim()
+            val rows = if (cleanQuery.isEmpty()) {
+                executeTursoSql(
+                    "SELECT id, username, display_name, public_key, key_backup FROM users ORDER BY created_at DESC LIMIT 30"
+                )
+            } else {
+                val wildcard = "%$cleanQuery%"
+                executeTursoSql(
+                    "SELECT id, username, display_name, public_key, key_backup FROM users WHERE (username LIKE ? OR display_name LIKE ? OR id LIKE ?) LIMIT 50",
+                    listOf(wildcard, wildcard, wildcard)
+                )
             }
 
-            val array = JSONArray(body)
+            val myId = currentUserId
             val list = mutableListOf<User>()
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
+            for (row in rows) {
+                val id = row["id"] as? String ?: continue
+                if (id == myId) continue
                 list.add(
                     User(
-                        id = obj.getString("id"),
-                        username = obj.getString("username"),
-                        displayName = obj.getString("displayName"),
-                        publicKey = obj.getString("publicKey")
+                        id = id,
+                        username = row["username"] as? String ?: "",
+                        displayName = row["display_name"] as? String ?: "",
+                        publicKey = row["public_key"] as? String ?: "",
+                        keyBackup = row["key_backup"] as? String
                     )
                 )
             }
@@ -175,26 +329,23 @@ class ApiClient(var baseUrl: String) {
 
     suspend fun getUser(idOrUsername: String): Result<User> = withContext(Dispatchers.IO) {
         try {
-            val request = newRequestBuilder("v1/users/${java.net.URLEncoder.encode(idOrUsername, "UTF-8")}")
-                .get()
-                .build()
-
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
-
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(IOException("User not found: ${response.code}"))
-            }
-
-            val obj = JSONObject(body)
-            Result.success(
-                User(
-                    id = obj.getString("id"),
-                    username = obj.getString("username"),
-                    displayName = obj.getString("displayName"),
-                    publicKey = obj.getString("publicKey")
-                )
+            val clean = idOrUsername.trim()
+            val rows = executeTursoSql(
+                "SELECT id, username, display_name, public_key, key_backup FROM users WHERE id = ? OR username = ? COLLATE NOCASE LIMIT 1",
+                listOf(clean, clean)
             )
+            if (rows.isEmpty()) {
+                return@withContext Result.failure(IOException("User '$clean' not found."))
+            }
+            val row = rows[0]
+            val user = User(
+                id = row["id"] as? String ?: "",
+                username = row["username"] as? String ?: "",
+                displayName = row["display_name"] as? String ?: "",
+                publicKey = row["public_key"] as? String ?: "",
+                keyBackup = row["key_backup"] as? String
+            )
+            Result.success(user)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -203,41 +354,34 @@ class ApiClient(var baseUrl: String) {
     suspend fun sendMessage(envelope: EncryptedEnvelope): Result<ChatMessage> =
         withContext(Dispatchers.IO) {
             try {
-                val json = JSONObject().apply {
-                    put("recipientId", envelope.recipientId)
-                    put("encryptedKey", envelope.encryptedKey)
-                    put("ciphertext", envelope.ciphertext)
-                    put("iv", envelope.iv)
-                    put("authTag", envelope.authTag)
-                }
+                val msgId = "msg-" + UUID.randomUUID().toString()
+                val senderId = currentUserId ?: ""
+                val now = System.currentTimeMillis()
 
-                val request = newRequestBuilder("v1/messages")
-                    .post(json.toString().toRequestBody(jsonMediaType))
-                    .build()
+                executeTursoSql(
+                    "INSERT INTO messages (id, sender_id, recipient_id, ciphertext, encrypted_key, iv, auth_tag, created_at, delivered_at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
+                    listOf(
+                        msgId,
+                        senderId,
+                        envelope.recipientId,
+                        envelope.ciphertext,
+                        envelope.encryptedKey,
+                        envelope.iv,
+                        envelope.authTag,
+                        now
+                    )
+                )
 
-                val response = client.newCall(request).execute()
-                val body = response.body?.string() ?: ""
-
-                if (!response.isSuccessful) {
-                    val errorMsg = try {
-                        JSONObject(body).optString("error", "Failed to send message.")
-                    } catch (e: Exception) {
-                        "Send failed: ${response.code}"
-                    }
-                    return@withContext Result.failure(IOException(errorMsg))
-                }
-
-                val resObj = JSONObject(body).getJSONObject("message")
                 val msg = ChatMessage(
-                    id = resObj.getString("id"),
-                    senderId = resObj.getString("senderId"),
-                    recipientId = resObj.getString("recipientId"),
-                    ciphertext = resObj.getString("ciphertext"),
-                    encryptedKey = resObj.getString("encryptedKey"),
-                    iv = resObj.getString("iv"),
-                    authTag = resObj.getString("authTag"),
-                    createdAt = resObj.getLong("createdAt"),
-                    status = resObj.optString("status", "sent")
+                    id = msgId,
+                    senderId = senderId,
+                    recipientId = envelope.recipientId,
+                    ciphertext = envelope.ciphertext,
+                    encryptedKey = envelope.encryptedKey,
+                    iv = envelope.iv,
+                    authTag = envelope.authTag,
+                    createdAt = now,
+                    status = "sent"
                 )
                 Result.success(msg)
             } catch (e: Exception) {
@@ -248,34 +392,35 @@ class ApiClient(var baseUrl: String) {
     suspend fun getConversation(peerId: String): Result<List<ChatMessage>> =
         withContext(Dispatchers.IO) {
             try {
-                val request = newRequestBuilder("v1/conversations/${java.net.URLEncoder.encode(peerId, "UTF-8")}")
-                    .get()
-                    .build()
+                val myId = currentUserId ?: ""
+                val rows = executeTursoSql(
+                    "SELECT id, sender_id, recipient_id, ciphertext, encrypted_key, iv, auth_tag, created_at, delivered_at, read_at FROM messages WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at ASC LIMIT 300",
+                    listOf(myId, peerId, peerId, myId)
+                )
 
-                val response = client.newCall(request).execute()
-                val body = response.body?.string() ?: "[]"
-
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("Failed to fetch messages: ${response.code}"))
-                }
-
-                val array = JSONArray(body)
                 val list = mutableListOf<ChatMessage>()
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
+                for (row in rows) {
+                    val deliveredAt = (row["delivered_at"] as? Number)?.toLong()
+                    val readAt = (row["read_at"] as? Number)?.toLong()
+                    val status = when {
+                        readAt != null && readAt > 0 -> "read"
+                        deliveredAt != null && deliveredAt > 0 -> "delivered"
+                        else -> "sent"
+                    }
+
                     list.add(
                         ChatMessage(
-                            id = obj.getString("id"),
-                            senderId = obj.getString("senderId"),
-                            recipientId = obj.getString("recipientId"),
-                            ciphertext = obj.getString("ciphertext"),
-                            encryptedKey = obj.getString("encryptedKey"),
-                            iv = obj.getString("iv"),
-                            authTag = obj.getString("authTag"),
-                            createdAt = obj.getLong("createdAt"),
-                            deliveredAt = if (obj.has("deliveredAt") && !obj.isNull("deliveredAt")) obj.getLong("deliveredAt") else null,
-                            readAt = if (obj.has("readAt") && !obj.isNull("readAt")) obj.getLong("readAt") else null,
-                            status = obj.optString("status", "sent")
+                            id = row["id"] as? String ?: "",
+                            senderId = row["sender_id"] as? String ?: "",
+                            recipientId = row["recipient_id"] as? String ?: "",
+                            ciphertext = row["ciphertext"] as? String ?: "",
+                            encryptedKey = row["encrypted_key"] as? String ?: "",
+                            iv = row["iv"] as? String ?: "",
+                            authTag = row["auth_tag"] as? String ?: "",
+                            createdAt = (row["created_at"] as? Number)?.toLong() ?: 0L,
+                            deliveredAt = deliveredAt,
+                            readAt = readAt,
+                            status = status
                         )
                     )
                 }
@@ -288,17 +433,17 @@ class ApiClient(var baseUrl: String) {
     suspend fun markDelivered(ids: List<String>): Result<Int> = withContext(Dispatchers.IO) {
         try {
             if (ids.isEmpty()) return@withContext Result.success(0)
-            val json = JSONObject().apply {
-                put("ids", JSONArray(ids))
+            val myId = currentUserId ?: return@withContext Result.success(0)
+            val now = System.currentTimeMillis()
+            var count = 0
+            for (id in ids) {
+                executeTursoSql(
+                    "UPDATE messages SET delivered_at = ? WHERE id = ? AND recipient_id = ? AND delivered_at IS NULL",
+                    listOf(now, id, myId)
+                )
+                count++
             }
-            val request = newRequestBuilder("v1/messages/delivered")
-                .post(json.toString().toRequestBody(jsonMediaType))
-                .build()
-
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: "{}"
-            val updated = JSONObject(body).optInt("updated", 0)
-            Result.success(updated)
+            Result.success(count)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -307,47 +452,34 @@ class ApiClient(var baseUrl: String) {
     suspend fun markRead(ids: List<String>): Result<Int> = withContext(Dispatchers.IO) {
         try {
             if (ids.isEmpty()) return@withContext Result.success(0)
-            val json = JSONObject().apply {
-                put("ids", JSONArray(ids))
+            val myId = currentUserId ?: return@withContext Result.success(0)
+            val now = System.currentTimeMillis()
+            var count = 0
+            for (id in ids) {
+                executeTursoSql(
+                    "UPDATE messages SET read_at = ?, delivered_at = COALESCE(delivered_at, ?) WHERE id = ? AND recipient_id = ? AND read_at IS NULL",
+                    listOf(now, now, id, myId)
+                )
+                count++
             }
-            val request = newRequestBuilder("v1/messages/read")
-                .post(json.toString().toRequestBody(jsonMediaType))
-                .build()
-
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: "{}"
-            val updated = JSONObject(body).optInt("updated", 0)
-            Result.success(updated)
+            Result.success(count)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    suspend fun rotateKey(publicKey: String, keyBackup: String?): Result<User> =
-        withContext(Dispatchers.IO) {
-            try {
-                val json = JSONObject().apply {
-                    put("publicKey", publicKey)
-                    keyBackup?.let { put("keyBackup", it) }
-                }
-                val request = newRequestBuilder("v1/account/rotate-key")
-                    .post(json.toString().toRequestBody(jsonMediaType))
-                    .build()
-
-                val response = client.newCall(request).execute()
-                val body = response.body?.string() ?: "{}"
-                val userObj = JSONObject(body).getJSONObject("user")
-                Result.success(
-                    User(
-                        id = userObj.getString("id"),
-                        username = userObj.getString("username"),
-                        displayName = userObj.getString("displayName"),
-                        publicKey = userObj.getString("publicKey"),
-                        keyBackup = userObj.optString("keyBackup", null)
-                    )
-                )
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+    suspend fun rotateKey(publicKey: String, keyBackup: String?): Result<User> = withContext(Dispatchers.IO) {
+        try {
+            val myId = currentUserId ?: throw IOException("User not authenticated.")
+            val now = System.currentTimeMillis()
+            executeTursoSql(
+                "UPDATE users SET public_key = ?, key_backup = ?, updated_at = ? WHERE id = ?",
+                listOf(publicKey, keyBackup, now, myId)
+            )
+            val user = getUser(myId).getOrThrow()
+            Result.success(user)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
+    }
 }
