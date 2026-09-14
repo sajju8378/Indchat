@@ -1,9 +1,123 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { createClient } from '@libsql/client';
 
 let dbInstance = null;
 let currentDbPath = '';
+let tursoClient = null;
+let currentTursoUrl = '';
+let currentTursoToken = '';
+let syncTimer = null;
+
+export function getTursoConfig() {
+  const url = (process.env.TURSO_DATABASE_URL || process.env.VITE_TURSO_DATABASE_URL || process.env.DATABASE_URL || currentTursoUrl || '').trim();
+  const token = (process.env.TURSO_AUTH_TOKEN || process.env.VITE_TURSO_AUTH_TOKEN || currentTursoToken || '').trim();
+  return { url, token };
+}
+
+export function getTursoStatus() {
+  const { url } = getTursoConfig();
+  return {
+    configured: Boolean(tursoClient),
+    connected: Boolean(tursoClient),
+    url: url ? url.replace(/:[^@]+@/, ':***@') : null,
+  };
+}
+
+export async function connectTurso(url, token) {
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    return { ok: false, error: 'Turso database URL is required.' };
+  }
+  try {
+    currentTursoUrl = url.trim();
+    currentTursoToken = (token || '').trim();
+    tursoClient = createClient({
+      url: currentTursoUrl,
+      authToken: currentTursoToken || undefined,
+    });
+    await initTursoTables();
+    await syncFromTurso();
+    return { ok: true, message: 'Connected to Turso DB successfully!' };
+  } catch (err) {
+    console.error('[Indchat] Failed to connect to Turso DB:', err);
+    return { ok: false, error: err.message || 'Failed to connect to Turso DB.' };
+  }
+}
+
+export async function initTursoTables() {
+  if (!tursoClient) return;
+  try {
+    await tursoClient.batch([
+      `CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE COLLATE NOCASE,
+        display_name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        public_key TEXT NOT NULL,
+        key_backup TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );`,
+      `CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      );`,
+      `CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        sender_id TEXT NOT NULL,
+        recipient_id TEXT NOT NULL,
+        ciphertext TEXT NOT NULL,
+        encrypted_key TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        auth_tag TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        delivered_at INTEGER,
+        read_at INTEGER
+      );`,
+      `CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_recipient_id ON messages(recipient_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);`,
+    ]);
+    console.log('[Indchat] Turso DB tables verified and active.');
+  } catch (err) {
+    console.error('[Indchat] Turso table init warning:', err.message);
+  }
+}
+
+export async function syncFromTurso() {
+  if (!tursoClient || !dbInstance) return;
+  try {
+    const result = await tursoClient.execute('SELECT * FROM users');
+    const localDb = getDb();
+    const insertStmt = localDb.prepare(`
+      INSERT OR REPLACE INTO users (id, username, display_name, password_hash, public_key, key_backup, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const row of result.rows) {
+      try {
+        insertStmt.run(
+          String(row.id),
+          String(row.username),
+          String(row.display_name),
+          String(row.password_hash),
+          String(row.public_key),
+          row.key_backup ? String(row.key_backup) : null,
+          Number(row.created_at) || Date.now(),
+          Number(row.updated_at) || Date.now()
+        );
+      } catch (e) {
+        // ignore duplicate
+      }
+    }
+  } catch (err) {
+    // Network or sync error - ignore for resilience
+  }
+}
 
 export function getDatabasePath() {
   if (process.env.DATABASE_PATH) {
@@ -75,6 +189,26 @@ export function initDatabase(dbPath = getDatabasePath()) {
     CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
   `);
 
+  // Initialize Turso client if configured via environment variables
+  const { url: tursoUrl, token: tursoToken } = getTursoConfig();
+  if (tursoUrl && !tursoClient) {
+    try {
+      tursoClient = createClient({
+        url: tursoUrl,
+        authToken: tursoToken || undefined,
+      });
+      console.log('[Indchat] Initialized Turso DB connection.');
+      initTursoTables().then(() => syncFromTurso());
+
+      if (!syncTimer) {
+        syncTimer = setInterval(syncFromTurso, 20000);
+        if (syncTimer.unref) syncTimer.unref();
+      }
+    } catch (e) {
+      console.error('[Indchat] Turso DB startup connection error:', e.message);
+    }
+  }
+
   return db;
 }
 
@@ -94,6 +228,16 @@ export function createUser({ id, username, displayName, passwordHash, publicKey,
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(id, username, displayName, passwordHash, publicKey, keyBackup || null, now, now);
+
+  // Store in Turso DB if active
+  if (tursoClient) {
+    tursoClient.execute({
+      sql: `INSERT OR REPLACE INTO users (id, username, display_name, password_hash, public_key, key_backup, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [id, username, displayName, passwordHash, publicKey, keyBackup || null, now, now],
+    }).catch(err => console.error('[Turso DB] User persist error:', err.message));
+  }
+
   return findUserById(id);
 }
 
@@ -162,6 +306,14 @@ export function createSession(userId, token, expiresInMs = 30 * 24 * 60 * 60 * 1
     VALUES (?, ?, ?, ?)
   `);
   stmt.run(token, userId, now, expiresAt);
+
+  if (tursoClient) {
+    tursoClient.execute({
+      sql: `INSERT OR REPLACE INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`,
+      args: [token, userId, now, expiresAt],
+    }).catch(err => console.error('[Turso DB] Session save error:', err.message));
+  }
+
   return { token, userId, createdAt: now, expiresAt };
 }
 
@@ -181,7 +333,16 @@ export function findSession(token) {
 export function deleteSession(token) {
   const db = getDb();
   const stmt = db.prepare(`DELETE FROM sessions WHERE token = ?`);
-  return stmt.run(token);
+  const result = stmt.run(token);
+
+  if (tursoClient) {
+    tursoClient.execute({
+      sql: `DELETE FROM sessions WHERE token = ?`,
+      args: [token],
+    }).catch(err => console.error('[Turso DB] Session delete error:', err.message));
+  }
+
+  return result;
 }
 
 // Message methods
@@ -193,6 +354,15 @@ export function saveMessage({ id, senderId, recipientId, ciphertext, encryptedKe
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(id, senderId, recipientId, ciphertext, encryptedKey, iv, authTag, now);
+
+  if (tursoClient) {
+    tursoClient.execute({
+      sql: `INSERT OR REPLACE INTO messages (id, sender_id, recipient_id, ciphertext, encrypted_key, iv, auth_tag, created_at, delivered_at, read_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [id, senderId, recipientId, ciphertext, encryptedKey, iv, authTag, now, null, null],
+    }).catch(err => console.error('[Turso DB] Message save error:', err.message));
+  }
+
   return getMessageById(id);
 }
 
@@ -302,6 +472,16 @@ export function markMessagesDelivered(recipientId, messageIds) {
       updatedCount += result.changes;
     }
   }
+
+  if (tursoClient && messageIds.length > 0) {
+    for (const id of messageIds) {
+      tursoClient.execute({
+        sql: `UPDATE messages SET delivered_at = ? WHERE id = ? AND recipient_id = ? AND delivered_at IS NULL`,
+        args: [now, id, recipientId],
+      }).catch(() => {});
+    }
+  }
+
   return updatedCount;
 }
 
@@ -320,6 +500,16 @@ export function markMessagesRead(recipientId, messageIds) {
       updatedCount += result.changes;
     }
   }
+
+  if (tursoClient && messageIds.length > 0) {
+    for (const id of messageIds) {
+      tursoClient.execute({
+        sql: `UPDATE messages SET read_at = ?, delivered_at = COALESCE(delivered_at, ?) WHERE id = ? AND recipient_id = ? AND read_at IS NULL`,
+        args: [now, now, id, recipientId],
+      }).catch(() => {});
+    }
+  }
+
   return updatedCount;
 }
 

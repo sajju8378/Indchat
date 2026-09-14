@@ -22,7 +22,6 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var etDisplayName: EditText
     private lateinit var etPassword: EditText
     private lateinit var etConfirmPassword: EditText
-    private lateinit var etServerUrl: EditText
     private lateinit var btnRegister: Button
     private lateinit var btnGoLogin: Button
     private lateinit var tvError: TextView
@@ -40,13 +39,10 @@ class RegisterActivity : AppCompatActivity() {
         etDisplayName = findViewById(R.id.etDisplayName)
         etPassword = findViewById(R.id.etPassword)
         etConfirmPassword = findViewById(R.id.etConfirmPassword)
-        etServerUrl = findViewById(R.id.etServerUrl)
         btnRegister = findViewById(R.id.btnRegister)
         btnGoLogin = findViewById(R.id.btnGoLogin)
         tvError = findViewById(R.id.tvError)
         progressLoading = findViewById(R.id.progressLoading)
-
-        etServerUrl.setText(app.getServerUrl())
 
         btnRegister.setOnClickListener {
             performRegistration()
@@ -62,16 +58,6 @@ class RegisterActivity : AppCompatActivity() {
         val displayName = etDisplayName.text.toString().trim()
         val password = etPassword.text.toString()
         val confirmPassword = etConfirmPassword.text.toString()
-        val serverUrl = etServerUrl.text.toString().trim()
-
-        if (serverUrl.isNotEmpty()) {
-            val phoneWarning = NetworkUtils.checkServerUrlForPhysicalPhone(serverUrl)
-            if (phoneWarning != null) {
-                showError(phoneWarning)
-                return
-            }
-            app.setServerUrl(serverUrl)
-        }
 
         if (!usernameRegex.matches(username)) {
             showError("Username must be 3–20 characters, start with a letter, and contain only letters, numbers, and underscores.")

@@ -79,16 +79,16 @@ export const AndroidInfoModal: React.FC<AndroidInfoModalProps> = ({ isOpen, onCl
 
           <div>
             <h3 className="font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-              Connecting Android Emulator to Local Server
+              Zero Configuration - Works Anywhere
             </h3>
             <p className="mt-1">
-              When running the Android app in the official emulator, set the Server URL to:
+              Your Android app is now pre-configured to connect automatically to the hosted cloud backend and sync with Turso DB:
             </p>
-            <div className="mt-1.5 rounded-lg bg-slate-100 p-2.5 font-mono text-[11px] text-slate-800 dark:bg-slate-800 dark:text-slate-200">
-              http://10.0.2.2:3000
+            <div className="mt-1.5 rounded-lg bg-slate-100 p-2.5 font-mono text-[11px] text-slate-800 dark:bg-slate-800 dark:text-slate-200 break-all">
+              https://ais-dev-tqvv3pehwwutotp5fwjgou-312216031270.asia-southeast1.run.app
             </div>
-            <p className="mt-1 text-[11px] text-slate-500">
-              On a physical device connected via USB/Wi-Fi, enter your computer's local IP address (e.g., <span className="font-mono">http://192.168.1.X:3000</span>).
+            <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+              ✓ No manual IP address entry required. Works across any mobile data (4G/5G) or Wi-Fi network like WhatsApp and Telegram.
             </p>
           </div>
 

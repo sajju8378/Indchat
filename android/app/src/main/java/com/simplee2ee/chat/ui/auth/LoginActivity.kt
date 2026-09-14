@@ -22,7 +22,6 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var app: ChatApplication
     private lateinit var etUsername: EditText
     private lateinit var etPassword: EditText
-    private lateinit var etServerUrl: EditText
     private lateinit var btnLogin: Button
     private lateinit var btnGoRegister: Button
     private lateinit var tvError: TextView
@@ -36,13 +35,10 @@ class LoginActivity : AppCompatActivity() {
 
         etUsername = findViewById(R.id.etUsername)
         etPassword = findViewById(R.id.etPassword)
-        etServerUrl = findViewById(R.id.etServerUrl)
         btnLogin = findViewById(R.id.btnLogin)
         btnGoRegister = findViewById(R.id.btnGoRegister)
         tvError = findViewById(R.id.tvError)
         progressLoading = findViewById(R.id.progressLoading)
-
-        etServerUrl.setText(app.getServerUrl())
 
         btnLogin.setOnClickListener {
             performLogin()
@@ -56,7 +52,6 @@ class LoginActivity : AppCompatActivity() {
     private fun performLogin() {
         val usernameOrId = etUsername.text.toString().trim()
         val password = etPassword.text.toString()
-        val serverUrl = etServerUrl.text.toString().trim()
 
         if (usernameOrId.isEmpty()) {
             showError("Please enter your username or ID.")
@@ -65,15 +60,6 @@ class LoginActivity : AppCompatActivity() {
         if (password.isEmpty()) {
             showError("Please enter your password.")
             return
-        }
-
-        if (serverUrl.isNotEmpty()) {
-            val phoneWarning = NetworkUtils.checkServerUrlForPhysicalPhone(serverUrl)
-            if (phoneWarning != null) {
-                showError(phoneWarning)
-                return
-            }
-            app.setServerUrl(serverUrl)
         }
 
         hideError()

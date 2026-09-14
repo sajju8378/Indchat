@@ -29,7 +29,7 @@ class ChatApplication : Application() {
         cryptoManager = CryptoManager(this)
         dbHelper = ChatDatabaseHelper(this, cryptoManager)
 
-        val serverUrl = prefs.getString(PREF_SERVER_URL, null) ?: DEFAULT_SERVER_URL
+        val serverUrl = getServerUrl()
         apiClient = ApiClient(normalizeUrl(serverUrl))
 
         val savedToken = prefs.getString(PREF_AUTH_TOKEN, null)
@@ -76,7 +76,10 @@ class ChatApplication : Application() {
 
     fun getServerUrl(): String {
         val saved = prefs.getString(PREF_SERVER_URL, null)
-        return saved ?: DEFAULT_SERVER_URL
+        if (saved.isNullOrBlank() || saved.contains("10.0.2.2") || saved.contains("localhost") || saved.contains("127.0.0.1")) {
+            return DEFAULT_SERVER_URL
+        }
+        return saved
     }
 
     companion object {
@@ -90,14 +93,16 @@ class ChatApplication : Application() {
         private const val PREF_PUBLIC_KEY = "public_key"
         private const val PREF_SERVER_URL = "server_url"
 
-        // Default local development URL (10.0.2.2 for Android Emulator, or localhost)
-        const val DEFAULT_SERVER_URL = "http://10.0.2.2:3000"
+        // Default Cloud Run backend URL accessible from any phone on mobile data or Wi-Fi
+        const val DEFAULT_SERVER_URL = "https://ais-dev-tqvv3pehwwutotp5fwjgou-312216031270.asia-southeast1.run.app"
 
         fun normalizeUrl(input: String): String {
             var trimmed = input.trim().removeSuffix("/")
-            if (trimmed.isEmpty()) return DEFAULT_SERVER_URL
+            if (trimmed.isEmpty() || trimmed.contains("10.0.2.2") || trimmed.contains("localhost") || trimmed.contains("127.0.0.1")) {
+                return DEFAULT_SERVER_URL
+            }
             if (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true)) {
-                trimmed = "http://$trimmed"
+                trimmed = "https://$trimmed"
             }
             return trimmed
         }

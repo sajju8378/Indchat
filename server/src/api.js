@@ -17,6 +17,8 @@ import {
   updateUserKey,
   updateKeyBackup,
   getStats,
+  getTursoStatus,
+  connectTurso,
 } from './database.js';
 import {
   hashPassword,
@@ -35,13 +37,44 @@ const USERNAME_REGEX = /^[A-Za-z][A-Za-z0-9_]{2,19}$/;
 // Public health check
 router.get(['/health', '/v1/health', '/api/health'], (req, res) => {
   const stats = getStats();
+  const turso = getTursoStatus();
   res.json({
     status: 'ok',
     ok: true,
-    database: 'sqlite',
+    database: turso.configured ? 'turso' : 'sqlite',
+    turso,
     users: stats.users,
     messages: stats.messages,
   });
+});
+
+// Database status check
+router.get(['/api/database/status', '/v1/database/status'], (req, res) => {
+  const stats = getStats();
+  const turso = getTursoStatus();
+  res.json({
+    ok: true,
+    database: turso.configured ? 'turso' : 'sqlite',
+    turso,
+    users: stats.users,
+    messages: stats.messages,
+  });
+});
+
+// Connect to Turso DB dynamically
+router.post(['/api/database/turso-connect', '/v1/database/turso-connect'], async (req, res) => {
+  const { url, authToken, token } = req.body || {};
+  const targetToken = authToken || token || '';
+  if (!url) {
+    return res.status(400).json({ error: 'Turso database URL is required.' });
+  }
+  const result = await connectTurso(url, targetToken);
+  if (result.ok) {
+    const stats = getStats();
+    res.json({ ...result, stats });
+  } else {
+    res.status(400).json(result);
+  }
 });
 
 // Register
