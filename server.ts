@@ -51,7 +51,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Simple E2EE Chat] server running on http://localhost:${PORT}`);
+    console.log(`[Indchat] server running on http://localhost:${PORT}`);
   });
 }
 

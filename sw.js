@@ -1,5 +1,5 @@
-// Service Worker for Simple E2EE Chat PWA
-const CACHE_NAME = 'simple-e2ee-chat-v1';
+// Service Worker for Indchat PWA
+const CACHE_NAME = 'indchat-v1';
 const PRECACHE_ASSETS = [
   './',
   './index.html',

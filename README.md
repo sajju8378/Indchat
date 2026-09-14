@@ -1,12 +1,12 @@
-# Simple E2EE Chat
+# Indchat
 
-A complete, production-ready, zero-knowledge End-to-End Encrypted (E2EE) messaging application with a native Android client (Kotlin, Android Keystore, SQLite encrypted at rest) and a hardened Node.js 22 backend.
+A complete, production-ready, zero-knowledge End-to-End Encrypted (E2EE) messaging application with a Progressive Web App (PWA), native Android client (Kotlin, Android Keystore, SQLite encrypted at rest), and a hardened Node.js 22 backend.
 
 ---
 
 ## Security Architecture
 
-Simple E2EE Chat implements standard cryptographic algorithms without proprietary or untested schemes:
+Indchat implements standard cryptographic algorithms without proprietary or untested schemes:
 - **Asymmetric Key Exchange**: RSA 2048-bit key pairs generated on the client device.
 - **Key Encapsulation**: RSA-OAEP with SHA-256 and MGF1 for securely wrapping per-message session keys.
 - **Symmetric Message Encryption**: AES-256-GCM with a fresh, cryptographically secure 12-byte IV and 128-bit authentication tag generated for every single message.

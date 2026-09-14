@@ -52,7 +52,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
               <div>
                 <h1 className="text-base font-bold text-white">Application Encountered an Issue</h1>
-                <p className="text-xs text-slate-400">Simple E2EE Chat recovered safely</p>
+                <p className="text-xs text-slate-400">Indchat recovered safely</p>
               </div>
             </div>
 

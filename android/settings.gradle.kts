@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SimpleE2EEChat"
+rootProject.name = "Indchat"
 include(":app")

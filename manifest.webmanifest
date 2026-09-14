@@ -1,8 +1,8 @@
 {
   "id": "com.simplee2ee.chat",
-  "name": "Simple E2EE Chat",
-  "short_name": "E2EE Chat",
-  "description": "Zero-knowledge end-to-end encrypted messaging with client-side RSA-OAEP SHA-256, AES-256-GCM, delivery receipts, and photo sharing.",
+  "name": "Indchat",
+  "short_name": "Indchat",
+  "description": "Indchat - Zero-knowledge end-to-end encrypted messaging with client-side RSA-OAEP SHA-256, AES-256-GCM, delivery receipts, and photo sharing.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -44,14 +44,14 @@
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Simple E2EE Chat Desktop Interface"
+      "label": "Indchat Desktop Interface"
     },
     {
       "src": "./screenshot-mobile.png",
       "sizes": "750x1334",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Simple E2EE Chat Mobile Interface"
+      "label": "Indchat Mobile Interface"
     }
   ]
 }

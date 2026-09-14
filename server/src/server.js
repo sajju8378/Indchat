@@ -31,7 +31,7 @@ app.use(router);
 // Start listening if run directly
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Simple E2EE Chat Server] running on http://0.0.0.0:${PORT}`);
+    console.log(`[Indchat Server] running on http://0.0.0.0:${PORT}`);
   });
 }
 

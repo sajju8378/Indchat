@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Simple E2EE Chat</string>
+    <string name="app_name">Indchat</string>
     <string name="login_title">Welcome Back</string>
     <string name="login_subtitle">Sign in to your end-to-end encrypted chats</string>
     <string name="username_or_id_hint">Username or ID (e.g. alice or E2E-XXXX)</string>

@@ -66,7 +66,7 @@ export default function App() {
       <div className="flex h-[100dvh] w-full flex-col items-center justify-center bg-slate-950 text-slate-100">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
-          <p className="text-xs text-slate-400">Loading Simple E2EE Chat...</p>
+          <p className="text-xs text-slate-400">Loading Indchat...</p>
         </div>
       </div>
     );
@@ -116,7 +116,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-sm font-bold tracking-tight text-white">
-              Simple E2EE Chat
+              Indchat
             </h1>
             <p className="text-[10px] text-slate-400 hidden sm:block">
               Zero-Knowledge RSA-2048-OAEP & AES-256-GCM

@@ -1,6 +1,6 @@
 {
-  "name": "Simple E2EE Chat",
-  "description": "Complete production-ready Android and Web E2EE messenger with zero-knowledge backend, RSA-OAEP + AES-256-GCM encryption, delivery and read receipts, and encrypted local storage.",
+  "name": "Indchat",
+  "description": "Indchat - Complete production-ready Android and Web E2EE messenger with zero-knowledge backend, RSA-OAEP + AES-256-GCM encryption, delivery and read receipts, and encrypted local storage.",
   "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
