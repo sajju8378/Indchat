@@ -437,3 +437,34 @@ export async function tursoUpdateUserKey(
     args: [publicKey, keyBackup || null, now, userId],
   });
 }
+
+export async function tursoResetPassword(
+  client: Client,
+  username: string,
+  newPassword: string
+): Promise<void> {
+  await initTursoTables(client);
+  const cleanUsername = username.trim();
+  const passwordHash = await hashPasswordBrowser(newPassword);
+  const now = Date.now();
+  const result = await client.execute({
+    sql: 'UPDATE users SET password_hash = ?, updated_at = ? WHERE username = ? COLLATE NOCASE',
+    args: [passwordHash, now, cleanUsername],
+  });
+  if (result.rowsAffected === 0) {
+    throw new Error(`User '@${cleanUsername}' not found on Turso database.`);
+  }
+}
+
+export async function tursoRemoveUser(
+  client: Client,
+  username: string
+): Promise<void> {
+  await initTursoTables(client);
+  const cleanUsername = username.trim();
+  await client.execute({
+    sql: 'DELETE FROM users WHERE username = ? COLLATE NOCASE',
+    args: [cleanUsername],
+  });
+}
+

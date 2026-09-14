@@ -19,6 +19,8 @@ import {
   tursoMarkDelivered,
   tursoMarkRead,
   tursoUpdateUserKey,
+  tursoResetPassword,
+  tursoRemoveUser,
   tursoTestConnection,
 } from './tursoClient';
 
@@ -35,40 +37,32 @@ const STORAGE_KEY_CONFIG = 'e2ee_server_config';
 const STORAGE_KEY_USERS = 'e2ee_local_db_users';
 const STORAGE_KEY_MESSAGES = 'e2ee_local_db_messages';
 
-// Determine default mode based on environment
+// Default mode is Turso DB for permanent, multi-device cloud storage
 export function getStoredServerConfig(): ServerConfig {
+  const envTursoUrl = (import.meta.env.VITE_TURSO_DATABASE_URL || '').trim();
+  const envTursoToken = (import.meta.env.VITE_TURSO_AUTH_TOKEN || '').trim();
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CONFIG);
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        mode: parsed.mode || 'local',
+        mode: parsed.mode || 'turso',
         serverUrl: parsed.serverUrl || '',
-        tursoUrl: parsed.tursoUrl || '',
-        tursoAuthToken: parsed.tursoAuthToken || '',
+        tursoUrl: parsed.tursoUrl || envTursoUrl,
+        tursoAuthToken: parsed.tursoAuthToken || envTursoToken,
       };
     }
   } catch (e) {
     // ignore
   }
 
-  // Detect if we are running in an environment with a live Express server:
-  // - AI Studio preview (hostname includes 'run.app' or 'ais-dev' or 'ais-pre')
-  // - Local development server (port 3000)
-  // Everywhere else (e.g. GitHub Pages, static hosting, Android APK / WebView without external server),
-  // default to 'local' standalone mode.
-  const isLiveBackendHost = typeof window !== 'undefined' && (
-    window.location.hostname.includes('ais-dev') ||
-    window.location.hostname.includes('ais-pre') ||
-    window.location.hostname.includes('run.app') ||
-    ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port === '3000')
-  );
-
+  // Default to Turso cloud database to store user IDs and passwords permanently
   return {
-    mode: isLiveBackendHost ? 'cloud' : 'local',
+    mode: 'turso',
     serverUrl: '',
-    tursoUrl: '',
-    tursoAuthToken: '',
+    tursoUrl: envTursoUrl,
+    tursoAuthToken: envTursoToken,
   };
 }
 
@@ -186,7 +180,12 @@ export async function apiRegister(
 ): Promise<{ token: string; user: User }> {
   const config = getStoredServerConfig();
 
-  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+  if (config.mode === 'turso') {
+    if (!config.tursoUrl?.trim() || !config.tursoAuthToken?.trim()) {
+      throw new Error(
+        'TURSO_CONFIG_REQUIRED: Turso Database is set as your default cloud database, but Database URL or Auth Token is missing. Please configure Turso credentials to register permanently across devices.'
+      );
+    }
     const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
     return await tursoRegister(client, username, displayName, password, publicKey, keyBackup);
   }
@@ -251,7 +250,12 @@ export async function apiLogin(
 ): Promise<{ token: string; user: User }> {
   const config = getStoredServerConfig();
 
-  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+  if (config.mode === 'turso') {
+    if (!config.tursoUrl?.trim() || !config.tursoAuthToken?.trim()) {
+      throw new Error(
+        'TURSO_CONFIG_REQUIRED: Turso Database is set as your default cloud database, but Database URL or Auth Token is missing. Please configure Turso credentials to log in.'
+      );
+    }
     const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
     return await tursoLogin(client, username, password);
   }
@@ -377,6 +381,29 @@ export async function apiResetLocalPassword(
   usernameOrId: string,
   newPassword: string
 ): Promise<{ token: string; user: User; keyPair: CryptoKeyPair }> {
+  const config = getStoredServerConfig();
+
+  if (config.mode === 'turso') {
+    if (!config.tursoUrl?.trim() || !config.tursoAuthToken?.trim()) {
+      throw new Error('Turso Database URL and Auth Token are required to reset password on Turso DB.');
+    }
+    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+    await tursoResetPassword(client, usernameOrId, newPassword);
+
+    // Re-authenticate and generate updated keys
+    const loginRes = await tursoLogin(client, usernameOrId, newPassword);
+    const { publicKeyPem, keyPair } = await generateRsaKeyPair();
+    const keyBackup = await backupPrivateKeyWithPassword(keyPair.privateKey, newPassword, usernameOrId);
+    await tursoUpdateUserKey(client, loginRes.user.id, publicKeyPem, keyBackup);
+    const pkcs8B64 = await exportPrivateKey(keyPair.privateKey);
+    saveLocalUserPrivateKey(loginRes.user.id, pkcs8B64);
+    return {
+      token: loginRes.token,
+      user: { ...loginRes.user, publicKey: publicKeyPem, keyBackup },
+      keyPair,
+    };
+  }
+
   const users = getLocalUsers();
   const cleanIdentifier = usernameOrId.trim().toLowerCase();
   const user = users.find(
@@ -455,6 +482,18 @@ export async function apiResetLocalPassword(
  * Removes an account from this device's local storage.
  */
 export function apiRemoveLocalUser(usernameOrId: string): boolean {
+  const config = getStoredServerConfig();
+  if (config.mode === 'turso' && config.tursoUrl && config.tursoAuthToken) {
+    try {
+      const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+      tursoRemoveUser(client, usernameOrId).catch((err) =>
+        console.warn('Failed to remove user from Turso DB:', err)
+      );
+    } catch (e) {
+      console.warn('Turso client error during remove:', e);
+    }
+  }
+
   const users = getLocalUsers();
   const clean = usernameOrId.trim().toLowerCase();
   const target = users.find(

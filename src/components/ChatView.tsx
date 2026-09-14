@@ -10,8 +10,11 @@ import {
   Code2,
   Image as ImageIcon,
   Lock,
+  Phone,
+  Video,
 } from 'lucide-react';
-import { ActiveSession, DecryptedUIMessage, User } from '../types';
+import { ActiveSession, DecryptedUIMessage, User, CallType } from '../types';
+import { CallModal } from './CallModal';
 import {
   decryptEnvelope,
   encryptEnvelope,
@@ -36,6 +39,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [inspectMessage, setInspectMessage] = useState<DecryptedUIMessage | null>(null);
+  const [activeCallType, setActiveCallType] = useState<CallType | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -301,16 +305,40 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            alert(
-              `Peer Public Key Fingerprint (SPKI):\n${peer.publicKey.slice(0, 120)}...\n\nAll messages to this user are encrypted client-side using RSA-OAEP SHA-256 and AES-256-GCM.`
-            );
-          }}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          Key Fingerprint
-        </button>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Audio Call Button */}
+          <button
+            id="chat-audio-call-btn"
+            onClick={() => setActiveCallType('audio')}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-emerald-400 hover:bg-slate-700 hover:text-emerald-300 transition"
+            title={`Audio Call @${peer.username}`}
+          >
+            <Phone className="h-4 w-4" />
+            <span className="hidden sm:inline text-slate-200">Call</span>
+          </button>
+
+          {/* Video Call Button */}
+          <button
+            id="chat-video-call-btn"
+            onClick={() => setActiveCallType('video')}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-indigo-400 hover:bg-slate-700 hover:text-indigo-300 transition"
+            title={`Video Call @${peer.username}`}
+          >
+            <Video className="h-4 w-4" />
+            <span className="hidden sm:inline text-slate-200">Video</span>
+          </button>
+
+          <button
+            onClick={() => {
+              alert(
+                `Peer Public Key Fingerprint (SPKI):\n${peer.publicKey.slice(0, 120)}...\n\nAll messages to this user are encrypted client-side using RSA-OAEP SHA-256 and AES-256-GCM.`
+              );
+            }}
+            className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 hidden md:inline-block"
+          >
+            Key Fingerprint
+          </button>
+        </div>
       </div>
 
       {/* Messages Scroll Area */}
@@ -512,6 +540,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
             </div>
           </div>
         </div>
+      )}
+      {/* Audio / Video Call Interface */}
+      {activeCallType && (
+        <CallModal
+          isOpen={!!activeCallType}
+          peer={peer}
+          callType={activeCallType}
+          onEndCall={() => setActiveCallType(null)}
+        />
       )}
     </div>
   );

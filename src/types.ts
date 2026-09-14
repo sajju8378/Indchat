@@ -45,3 +45,18 @@ export interface ActiveSession {
   user: User;
   keyPair: CryptoKeyPair;
 }
+
+export type CallType = 'audio' | 'video';
+export type CallStatus = 'calling' | 'incoming' | 'connected' | 'ended';
+
+export interface CallSession {
+  callId: string;
+  peer: User;
+  type: CallType;
+  status: CallStatus;
+  startedAt?: number;
+  isMuted: boolean;
+  isVideoOff: boolean;
+  facingMode: 'user' | 'environment';
+}
+
