@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Eye, EyeOff, KeyRound, UserCheck, AlertCircle, Settings2, Smartphone, Globe, UserPlus, Database, X, RotateCcw } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff, KeyRound, UserCheck, AlertCircle, Settings2, Smartphone, Globe, UserPlus, Database, X, RotateCcw, QrCode } from 'lucide-react';
 import {
   generateRsaKeyPair,
   exportPrivateKey,
@@ -24,8 +24,10 @@ import {
   ServerConfig,
   getLocalUserList,
   LocalUserInfo,
+  parseConnectionParam,
 } from '../lib/api';
 import { ServerSettingsModal } from './ServerSettingsModal';
+import { SyncDeviceModal } from './SyncDeviceModal';
 
 interface AuthModalProps {
   onAuthenticated: (session: ActiveSession) => void;
@@ -59,8 +61,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
   const [showResetPassword, setShowResetPassword] = useState(false);
 
-  // Server settings modal state
+  // Server settings & Sync modal state
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   // Inline Turso configuration state for rapid 1-click cloud database setup
   const [inlineTursoUrl, setInlineTursoUrl] = useState(serverConfig.tursoUrl || '');
@@ -72,6 +75,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
     setInlineTursoUrl(serverConfig.tursoUrl || '');
     setInlineTursoToken(serverConfig.tursoAuthToken || '');
   }, [serverConfig]);
+
+  const handleTursoUrlChange = (val: string) => {
+    const trimmed = val.trim();
+    const parsed = parseConnectionParam(trimmed);
+    if (parsed?.tursoUrl && parsed?.tursoAuthToken) {
+      setInlineTursoUrl(parsed.tursoUrl);
+      setInlineTursoToken(parsed.tursoAuthToken);
+      setInlineTursoMsg({
+        type: 'success',
+        text: 'Extracted Turso Database URL and Auth Token from connection link! Tap "Save & Connect Turso".',
+      });
+      return;
+    }
+    setInlineTursoUrl(val);
+  };
 
   const handleSaveInlineTurso = async () => {
     const url = inlineTursoUrl.trim();
@@ -365,6 +383,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
   const isAlreadyRegisteredError =
     error && error.toLowerCase().includes('already registered');
 
+  const isTursoConfigError =
+    error &&
+    (error.includes('TURSO_CONFIG_REQUIRED') ||
+      error.toLowerCase().includes('database url or auth token is missing') ||
+      error.toLowerCase().includes('turso credentials'));
+
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
@@ -420,23 +444,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
                   <span className="font-bold text-slate-100">Permanent Turso Cloud Storage</span>
                 </div>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-900/80 text-indigo-300 border border-indigo-700/50">
-                  Default
+                  Multi-Device Chat
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 mb-3 leading-relaxed">
-                Connect your free Turso database to register users permanently and allow multiple phones to chat.
+                Connect your database to chat between multiple phones on GitHub Pages.
               </p>
+
+              {/* FAST 1-CLICK ACTION: SCAN QR OR PASTE LINK FROM PHONE 1 */}
+              <button
+                type="button"
+                onClick={() => setIsSyncModalOpen(true)}
+                className="w-full mb-3 py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Connect via QR Code or Link from Phone 1</span>
+              </button>
 
               <div className="space-y-2.5">
                 <div>
                   <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                    Database URL
+                    Database URL or Invite Link
                   </label>
                   <input
                     type="text"
                     value={inlineTursoUrl}
-                    onChange={(e) => setInlineTursoUrl(e.target.value)}
-                    placeholder="libsql://my-e2ee-db-username.turso.io"
+                    onChange={(e) => handleTursoUrlChange(e.target.value)}
+                    placeholder="libsql://... or paste https://...#connect=..."
                     className="w-full rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -617,6 +651,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
                   >
                     <UserPlus className="h-3.5 w-3.5" />
                     Register '{username.trim() || 'New User'}' on This Device
+                  </button>
+                </div>
+              )}
+
+              {/* Action when Turso credentials are required */}
+              {isTursoConfigError && (
+                <div className="pl-6 pt-1 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSyncModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs transition"
+                  >
+                    <QrCode className="h-3.5 w-3.5" />
+                    Scan QR / Paste Link from Phone 1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSwitchToLocalMode}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs shadow-xs transition"
+                  >
+                    <Smartphone className="h-3.5 w-3.5" />
+                    Switch to Local Mode & Register Now
                   </button>
                 </div>
               )}
@@ -872,6 +928,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
           setServerConfig(cfg);
           setLocalUsers(getLocalUserList());
         }}
+      />
+
+      <SyncDeviceModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        serverConfig={serverConfig}
+        onConfigUpdated={(cfg) => {
+          setServerConfig(cfg);
+          setInlineTursoUrl(cfg.tursoUrl || '');
+          setInlineTursoToken(cfg.tursoAuthToken || '');
+          setLocalUsers(getLocalUserList());
+          setError(null);
+        }}
+        defaultTab="scan"
       />
     </>
   );

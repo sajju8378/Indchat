@@ -8,6 +8,7 @@ import {
   CheckCheck,
   Check,
   User as UserIcon,
+  QrCode,
 } from 'lucide-react';
 import { ActiveSession, User } from '../types';
 import { apiSearchUsers } from '../lib/api';
@@ -17,6 +18,7 @@ interface RecentChatsProps {
   onSelectPeer: (peer: User) => void;
   onLogout: () => void;
   onOpenAndroidInfo: () => void;
+  onOpenSyncDevice?: () => void;
 }
 
 export const RecentChats: React.FC<RecentChatsProps> = ({
@@ -24,6 +26,7 @@ export const RecentChats: React.FC<RecentChatsProps> = ({
   onSelectPeer,
   onLogout,
   onOpenAndroidInfo,
+  onOpenSyncDevice,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
@@ -82,6 +85,15 @@ export const RecentChats: React.FC<RecentChatsProps> = ({
           </div>
 
           <div className="flex items-center gap-1">
+            {onOpenSyncDevice && (
+              <button
+                onClick={onOpenSyncDevice}
+                className="rounded-lg p-2 text-indigo-400 hover:bg-indigo-950/50 hover:text-indigo-300 dark:text-indigo-400 dark:hover:bg-slate-800 transition"
+                title="Link 2nd Phone / Share via QR Code & WhatsApp"
+              >
+                <QrCode className="h-4 w-4" />
+              </button>
+            )}
             <button
               onClick={onOpenAndroidInfo}
               className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
@@ -99,8 +111,24 @@ export const RecentChats: React.FC<RecentChatsProps> = ({
           </div>
         </div>
 
+        {/* Link 2nd Phone / Share Quick Action Banner */}
+        {onOpenSyncDevice && (
+          <button
+            onClick={onOpenSyncDevice}
+            className="mt-3 flex w-full items-center justify-between rounded-xl border border-indigo-500/30 bg-indigo-950/30 px-3 py-1.5 text-xs text-indigo-300 hover:bg-indigo-950/50 transition shadow-xs"
+          >
+            <div className="flex items-center gap-2">
+              <QrCode className="h-3.5 w-3.5 text-indigo-400" />
+              <span className="font-semibold text-slate-200">Connect 2nd Mobile</span>
+            </div>
+            <span className="text-[10px] bg-indigo-900/80 text-indigo-200 px-2 py-0.5 rounded-full font-medium border border-indigo-700/50">
+              QR / Link
+            </span>
+          </button>
+        )}
+
         {/* Search / New Chat Bar */}
-        <div className="mt-4 flex items-center gap-2">
+        <div className="mt-3 flex items-center gap-2">
           <button
             onClick={() => setShowSearchModal(true)}
             className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs text-slate-400 hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-800/80 dark:hover:bg-slate-800"

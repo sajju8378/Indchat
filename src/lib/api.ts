@@ -37,10 +37,100 @@ const STORAGE_KEY_CONFIG = 'e2ee_server_config';
 const STORAGE_KEY_USERS = 'e2ee_local_db_users';
 const STORAGE_KEY_MESSAGES = 'e2ee_local_db_messages';
 
+// Helper to parse Turso connection params from base64, hash, or query string
+export function parseConnectionParam(input: string): { tursoUrl?: string; tursoAuthToken?: string; serverUrl?: string } | null {
+  try {
+    let clean = input.trim();
+    if (!clean) return null;
+
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      try {
+        const urlObj = new URL(clean);
+        if (urlObj.hash && urlObj.hash.includes('connect=')) {
+          clean = urlObj.hash.split('connect=')[1].split('&')[0];
+        } else if (urlObj.searchParams.get('turso_url') && urlObj.searchParams.get('turso_token')) {
+          return {
+            tursoUrl: decodeURIComponent(urlObj.searchParams.get('turso_url')!),
+            tursoAuthToken: decodeURIComponent(urlObj.searchParams.get('turso_token')!),
+          };
+        }
+      } catch {
+        // continue
+      }
+    }
+
+    if (clean.startsWith('#connect=')) {
+      clean = clean.replace('#connect=', '');
+    }
+
+    // Try decoding base64 payload
+    let jsonStr = '';
+    try {
+      jsonStr = atob(clean);
+    } catch {
+      jsonStr = clean;
+    }
+
+    const data = JSON.parse(jsonStr);
+    const u = (data.u || data.tursoUrl || '').trim();
+    const t = (data.t || data.tursoAuthToken || '').trim();
+    if (u && t) {
+      return {
+        tursoUrl: u,
+        tursoAuthToken: t,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function generateTursoShareLink(config: ServerConfig): string {
+  if (!config.tursoUrl?.trim() || !config.tursoAuthToken?.trim()) return '';
+  try {
+    const payload = JSON.stringify({
+      u: config.tursoUrl.trim(),
+      t: config.tursoAuthToken.trim(),
+      m: 'turso',
+    });
+    const encoded = btoa(payload);
+    const origin = window.location.origin;
+    const path = window.location.pathname;
+    return `${origin}${path}#connect=${encoded}`;
+  } catch {
+    return '';
+  }
+}
+
 // Default mode is Turso DB for permanent, multi-device cloud storage
 export function getStoredServerConfig(): ServerConfig {
   const envTursoUrl = (import.meta.env.VITE_TURSO_DATABASE_URL || '').trim();
   const envTursoToken = (import.meta.env.VITE_TURSO_AUTH_TOKEN || '').trim();
+
+  // 1. Check window.location for invite / connect hash or query parameter
+  if (typeof window !== 'undefined') {
+    try {
+      const parsedUrl = parseConnectionParam(window.location.href);
+      if (parsedUrl?.tursoUrl && parsedUrl?.tursoAuthToken) {
+        const importedConfig: ServerConfig = {
+          mode: 'turso',
+          serverUrl: '',
+          tursoUrl: parsedUrl.tursoUrl,
+          tursoAuthToken: parsedUrl.tursoAuthToken,
+        };
+        localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(importedConfig));
+        // Clean URL hash so token isn't sitting in the browser address bar
+        if (window.history && window.history.replaceState) {
+          const cleanUrl = window.location.pathname + window.location.search.replace(/[?&]turso_[^&]+/g, '');
+          window.history.replaceState(null, '', cleanUrl || '/');
+        }
+        return importedConfig;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CONFIG);

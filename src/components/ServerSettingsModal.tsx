@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Server, Smartphone, Globe, Database, CheckCircle2, AlertCircle, X, RefreshCw } from 'lucide-react';
-import { getStoredServerConfig, saveServerConfig, ServerConfig, apiTestTurso } from '../lib/api';
+import { Server, Smartphone, Globe, Database, CheckCircle2, AlertCircle, X, RefreshCw, QrCode } from 'lucide-react';
+import { getStoredServerConfig, saveServerConfig, ServerConfig, apiTestTurso, parseConnectionParam } from '../lib/api';
+import { SyncDeviceModal } from './SyncDeviceModal';
 
 interface ServerSettingsModalProps {
   isOpen: boolean;
@@ -16,8 +17,25 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   const [config, setConfig] = useState<ServerConfig>(getStoredServerConfig());
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
+  const [showSyncModal, setShowSyncModal] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleTursoUrlChange = (val: string) => {
+    const parsed = parseConnectionParam(val);
+    if (parsed?.tursoUrl && parsed?.tursoAuthToken) {
+      setConfig({
+        ...config,
+        mode: 'turso',
+        tursoUrl: parsed.tursoUrl,
+        tursoAuthToken: parsed.tursoAuthToken,
+      });
+      setTestStatus('success');
+      setTestMessage('Connection parameters parsed successfully from invite link!');
+      return;
+    }
+    setConfig({ ...config, tursoUrl: val });
+  };
 
   const handleSave = () => {
     saveServerConfig(config);
@@ -152,14 +170,14 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                 <div className="mt-3 space-y-3 pt-3 border-t border-slate-800/80" onClick={(e) => e.stopPropagation()}>
                   <div>
                     <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                      Turso Database URL
+                      Turso Database URL or Invite Link
                     </label>
                     <input
                       id="turso-url-input"
                       type="text"
                       value={config.tursoUrl || ''}
-                      onChange={(e) => setConfig({ ...config, tursoUrl: e.target.value })}
-                      placeholder="e.g. libsql://your-db-name.turso.io"
+                      onChange={(e) => handleTursoUrlChange(e.target.value)}
+                      placeholder="e.g. libsql://your-db-name.turso.io or paste invite link"
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
@@ -178,7 +196,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                     />
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex items-center gap-2 pt-1 flex-wrap">
                     <button
                       type="button"
                       onClick={handleTestConnection}
@@ -188,7 +206,17 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                       <RefreshCw className={`w-3.5 h-3.5 ${testStatus === 'testing' ? 'animate-spin' : ''}`} />
                       Test Turso Connection
                     </button>
-                    <span className="text-[10px] text-slate-400">Auto-initializes tables</span>
+
+                    {config.tursoUrl?.trim() && config.tursoAuthToken?.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setShowSyncModal(true)}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1.5 transition shadow-xs"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        Link 2nd Phone (QR & WhatsApp)
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -311,6 +339,17 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
           </button>
         </div>
       </div>
+
+      <SyncDeviceModal
+        isOpen={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+        serverConfig={config}
+        onConfigUpdated={(newCfg) => {
+          setConfig(newCfg);
+          if (onConfigChanged) onConfigChanged(newCfg);
+        }}
+        defaultTab="share"
+      />
     </div>
   );
 };

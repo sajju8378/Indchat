@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Smartphone, MessageSquare, Server, Globe, Database } from 'lucide-react';
+import { ShieldCheck, Smartphone, MessageSquare, Server, Globe, Database, QrCode } from 'lucide-react';
 import { ActiveSession, User, CallType } from './types';
 import { AuthModal } from './components/AuthModal';
 import { RecentChats } from './components/RecentChats';
@@ -9,6 +9,7 @@ import { AndroidInfoModal } from './components/AndroidInfoModal';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ServerSettingsModal } from './components/ServerSettingsModal';
+import { SyncDeviceModal } from './components/SyncDeviceModal';
 import { FullscreenHeaderBanner } from './components/FullscreenHeaderBanner';
 import { getStoredServerConfig, ServerConfig } from './lib/api';
 import { getStoredSession, saveStoredSession, clearStoredSession } from './lib/session';
@@ -28,6 +29,8 @@ export default function App() {
   const [activePeer, setActivePeer] = useState<User | null>(null);
   const [showAndroidInfo, setShowAndroidInfo] = useState(false);
   const [showServerSettings, setShowServerSettings] = useState(false);
+  const [showSyncDevice, setShowSyncDevice] = useState(false);
+  const [syncDeviceTab, setSyncDeviceTab] = useState<'share' | 'scan'>('share');
   const [serverConfig, setServerConfig] = useState<ServerConfig>(getStoredServerConfig());
   const [globalCall, setGlobalCall] = useState<GlobalActiveCall | null>(null);
 
@@ -119,6 +122,18 @@ export default function App() {
         <FullscreenHeaderBanner />
         <div className="relative flex flex-1 w-full flex-col items-center justify-center p-2 sm:p-4">
           <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+            <button
+              id="open-sync-device-btn-auth"
+              onClick={() => {
+                setSyncDeviceTab('scan');
+                setShowSyncDevice(true);
+              }}
+              className="flex items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-950/80 px-3 py-1.5 text-xs font-semibold text-indigo-300 transition hover:bg-indigo-900"
+              title="Connect this phone using QR Code or Link from Phone 1"
+            >
+              <QrCode className="h-4 w-4 text-indigo-400" />
+              <span className="hidden sm:inline">Connect 2nd Mobile</span>
+            </button>
             <PWAInstallButton />
             <button
               id="open-android-info-btn-auth"
@@ -134,6 +149,13 @@ export default function App() {
           <AndroidInfoModal
             isOpen={showAndroidInfo}
             onClose={() => setShowAndroidInfo(false)}
+          />
+          <SyncDeviceModal
+            isOpen={showSyncDevice}
+            onClose={() => setShowSyncDevice(false)}
+            serverConfig={serverConfig}
+            onConfigUpdated={(cfg) => setServerConfig(cfg)}
+            defaultTab={syncDeviceTab}
           />
           <OfflineIndicator />
         </div>
@@ -193,6 +215,19 @@ export default function App() {
           <PWAInstallButton />
 
           <button
+            id="header-sync-device-btn"
+            onClick={() => {
+              setSyncDeviceTab('share');
+              setShowSyncDevice(true);
+            }}
+            className="flex items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-950/80 px-2.5 py-1 text-xs font-semibold text-indigo-300 transition hover:bg-indigo-900"
+            title="Link 2nd Mobile / Invite via QR Code or WhatsApp"
+          >
+            <QrCode className="h-3.5 w-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">Link Mobile</span>
+          </button>
+
+          <button
             id="header-android-guide-btn"
             onClick={() => setShowAndroidInfo(true)}
             className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
@@ -223,6 +258,10 @@ export default function App() {
             onSelectPeer={(peer) => setActivePeer(peer)}
             onLogout={handleLogout}
             onOpenAndroidInfo={() => setShowAndroidInfo(true)}
+            onOpenSyncDevice={() => {
+              setSyncDeviceTab('share');
+              setShowSyncDevice(true);
+            }}
           />
         </div>
 
@@ -277,6 +316,14 @@ export default function App() {
       <AndroidInfoModal
         isOpen={showAndroidInfo}
         onClose={() => setShowAndroidInfo(false)}
+      />
+
+      <SyncDeviceModal
+        isOpen={showSyncDevice}
+        onClose={() => setShowSyncDevice(false)}
+        serverConfig={serverConfig}
+        onConfigUpdated={(cfg) => setServerConfig(cfg)}
+        defaultTab={syncDeviceTab}
       />
       <OfflineIndicator />
     </div>
