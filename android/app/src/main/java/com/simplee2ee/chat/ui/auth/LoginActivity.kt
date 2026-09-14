@@ -14,6 +14,7 @@ import com.simplee2ee.chat.ChatApplication
 import com.simplee2ee.chat.R
 import com.simplee2ee.chat.ui.main.MainActivity
 import com.simplee2ee.chat.ui.recovery.KeyRecoveryDialog
+import com.simplee2ee.chat.util.NetworkUtils
 import kotlinx.coroutines.launch
 
 class LoginActivity : AppCompatActivity() {
@@ -67,6 +68,11 @@ class LoginActivity : AppCompatActivity() {
         }
 
         if (serverUrl.isNotEmpty()) {
+            val phoneWarning = NetworkUtils.checkServerUrlForPhysicalPhone(serverUrl)
+            if (phoneWarning != null) {
+                showError(phoneWarning)
+                return
+            }
             app.setServerUrl(serverUrl)
         }
 
@@ -116,7 +122,7 @@ class LoginActivity : AppCompatActivity() {
                     navigateToMain()
                 }
             }.onFailure { err ->
-                showError(err.message ?: "Login failed. Please check your connection and credentials.")
+                showError(NetworkUtils.getFriendlyErrorMessage(err, app.getServerUrl()))
             }
         }
     }

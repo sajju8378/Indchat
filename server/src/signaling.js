@@ -32,12 +32,55 @@ export function isUserOnline(userId) {
 export function setupSignaling(server) {
   const wss = new WebSocketServer({ noServer: true });
 
+  // Dedicated lightweight handler for Vite HMR WebSocket connections in dev mode
+  const viteWss = new WebSocketServer({
+    noServer: true,
+    handleProtocols: (protocols) => {
+      const protoList = Array.from(protocols);
+      if (protoList.includes('vite-hmr')) return 'vite-hmr';
+      if (protoList.includes('vite-ping')) return 'vite-ping';
+      return protoList[0] || false;
+    }
+  });
+
+  viteWss.on('connection', (ws) => {
+    try {
+      ws.send(JSON.stringify({ type: 'connected' }));
+    } catch (e) {}
+
+    ws.on('message', () => {});
+    const interval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+      }
+    }, 25000);
+    ws.on('close', () => clearInterval(interval));
+  });
+
   server.on('upgrade', (request, socket, head) => {
-    const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
-    if (url.pathname === '/ws' || url.pathname === '/ws/') {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-      });
+    try {
+      const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+      const secProtocol = request.headers['sec-websocket-protocol'] || '';
+
+      if (url.pathname === '/ws' || url.pathname === '/ws/') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+      } else if (
+        secProtocol.includes('vite-hmr') ||
+        secProtocol.includes('vite-ping') ||
+        url.searchParams.has('token') ||
+        url.pathname.includes('vite')
+      ) {
+        viteWss.handleUpgrade(request, socket, head, (ws) => {
+          viteWss.emit('connection', ws, request);
+        });
+      } else {
+        // Safe fallback for other upgrade requests
+        socket.destroy();
+      }
+    } catch (err) {
+      socket.destroy();
     }
   });
 

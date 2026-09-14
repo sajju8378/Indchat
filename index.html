@@ -1,43 +1,26 @@
 <!doctype html>
 <html lang="en" class="dark" style="background-color: #020617; color: #f8fafc;">
   <head>
-    <style>
-      html, body {
-        background-color: #020617 !important;
-        color: #f8fafc !important;
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        height: 100dvh;
-      }
-      @keyframes e2ee-spin {
-        to { transform: rotate(360deg); }
-      }
-    </style>
-    <script>
-      // Self-healing path normalizer for GitHub Pages subdirectory deployments
-      (function() {
-        try {
-          var path = window.location.pathname;
-          var host = window.location.hostname;
-          if (host.indexOf('github.io') !== -1) {
-            // If at /Indchat without trailing slash, normalize to /Indchat/
-            if (path === '/Indchat') {
-              window.location.replace('/Indchat/' + window.location.search + window.location.hash);
-            }
-          }
-        } catch(e) {}
-      })();
-    </script>
     <script>
       // Suppress benign [vite] websocket connection logging in container iframe preview
       (function() {
         function isViteMessage(arg) {
-          if (!arg) return false;
+          if (arg === null || arg === undefined) return false;
+          if (arg === '[vite]' || arg === '[vite-hmr]' || arg === '[hmr]') return true;
           try {
-            var str = typeof arg === 'string' ? arg : (arg.message || arg.stack || (typeof arg.toString === 'function' ? arg.toString() : ''));
-            return str.indexOf('[vite]') !== -1 || (str.indexOf('vite') !== -1 && str.indexOf('websocket') !== -1);
+            if (typeof arg === 'string') {
+              var s = arg.toLowerCase();
+              return s.indexOf('[vite]') !== -1 || s.indexOf('vite-hmr') !== -1 || (s.indexOf('vite') !== -1 && s.indexOf('websocket') !== -1);
+            }
+            if (typeof Event !== 'undefined' && arg instanceof Event) {
+              return true;
+            }
+            var msg = arg.message || arg.stack || (typeof arg.toString === 'function' ? arg.toString() : '');
+            if (typeof msg === 'string') {
+              var sm = msg.toLowerCase();
+              return sm.indexOf('[vite]') !== -1 || sm.indexOf('vite-hmr') !== -1 || (sm.indexOf('vite') !== -1 && sm.indexOf('websocket') !== -1);
+            }
+            return false;
           } catch(e) {
             return false;
           }
@@ -75,8 +58,16 @@
           origInfo.apply(console, arguments);
         };
 
+        var origDebug = console.debug;
+        console.debug = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            if (isViteMessage(arguments[i])) return;
+          }
+          if (origDebug) origDebug.apply(console, arguments);
+        };
+
         window.addEventListener('error', function(e) {
-          if (isViteMessage(e.message) || isViteMessage(e.error)) {
+          if (isViteMessage(e.message) || isViteMessage(e.error) || (e.target && e.target.nodeName === 'SCRIPT' && (e.target.src || '').indexOf('@vite') !== -1)) {
             e.preventDefault();
             e.stopPropagation();
             if (e.stopImmediatePropagation) e.stopImmediatePropagation();
@@ -90,6 +81,35 @@
             if (e.stopImmediatePropagation) e.stopImmediatePropagation();
           }
         }, true);
+      })();
+    </script>
+    <style>
+      html, body {
+        background-color: #020617 !important;
+        color: #f8fafc !important;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+      }
+      @keyframes e2ee-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+    <script>
+      // Self-healing path normalizer for GitHub Pages subdirectory deployments
+      (function() {
+        try {
+          var path = window.location.pathname;
+          var host = window.location.hostname;
+          if (host.indexOf('github.io') !== -1) {
+            // If at /Indchat without trailing slash, normalize to /Indchat/
+            if (path === '/Indchat') {
+              window.location.replace('/Indchat/' + window.location.search + window.location.hash);
+            }
+          }
+        } catch(e) {}
       })();
     </script>
     <meta charset="UTF-8" />

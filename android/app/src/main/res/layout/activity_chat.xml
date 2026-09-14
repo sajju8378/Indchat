@@ -114,7 +114,7 @@
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="6dp"
             android:layout_weight="1"
-            android:background="@drawable/chat_wallpaper_pattern"
+            android:background="@drawable/bg_message_input"
             android:hint="@string/message_hint"
             android:maxLines="4"
             android:paddingHorizontal="14dp"

@@ -29,8 +29,8 @@ class ChatApplication : Application() {
         cryptoManager = CryptoManager(this)
         dbHelper = ChatDatabaseHelper(this, cryptoManager)
 
-        val serverUrl = prefs.getString(PREF_SERVER_URL, DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
-        apiClient = ApiClient(serverUrl)
+        val serverUrl = prefs.getString(PREF_SERVER_URL, null) ?: DEFAULT_SERVER_URL
+        apiClient = ApiClient(normalizeUrl(serverUrl))
 
         val savedToken = prefs.getString(PREF_AUTH_TOKEN, null)
         if (savedToken != null) {
@@ -69,12 +69,14 @@ class ChatApplication : Application() {
     }
 
     fun setServerUrl(url: String) {
-        prefs.edit().putString(PREF_SERVER_URL, url).apply()
-        apiClient.baseUrl = url
+        val normalized = normalizeUrl(url)
+        prefs.edit().putString(PREF_SERVER_URL, normalized).apply()
+        apiClient.baseUrl = normalized
     }
 
     fun getServerUrl(): String {
-        return prefs.getString(PREF_SERVER_URL, DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
+        val saved = prefs.getString(PREF_SERVER_URL, null)
+        return saved ?: DEFAULT_SERVER_URL
     }
 
     companion object {
@@ -90,5 +92,14 @@ class ChatApplication : Application() {
 
         // Default local development URL (10.0.2.2 for Android Emulator, or localhost)
         const val DEFAULT_SERVER_URL = "http://10.0.2.2:3000"
+
+        fun normalizeUrl(input: String): String {
+            var trimmed = input.trim().removeSuffix("/")
+            if (trimmed.isEmpty()) return DEFAULT_SERVER_URL
+            if (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true)) {
+                trimmed = "http://$trimmed"
+            }
+            return trimmed
+        }
     }
 }

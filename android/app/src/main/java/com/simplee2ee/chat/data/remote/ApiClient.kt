@@ -27,7 +27,12 @@ class ApiClient(var baseUrl: String) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     private fun newRequestBuilder(path: String): Request.Builder {
-        val url = if (baseUrl.endsWith("/")) "$baseUrl$path" else "$baseUrl/$path"
+        var base = baseUrl.trim().removeSuffix("/")
+        if (!base.startsWith("http://", ignoreCase = true) && !base.startsWith("https://", ignoreCase = true)) {
+            base = "http://$base"
+        }
+        val cleanPath = path.removePrefix("/")
+        val url = "$base/$cleanPath"
         val builder = Request.Builder().url(url)
         authToken?.let {
             builder.addHeader("Authorization", "Bearer $it")

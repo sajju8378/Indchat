@@ -51,18 +51,23 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="@string/username_or_id_hint"
+                    android:textColorHint="@color/text_secondary"
                     app:boxBackgroundMode="outline"
                     app:boxCornerRadiusTopStart="12dp"
                     app:boxCornerRadiusTopEnd="12dp"
                     app:boxCornerRadiusBottomStart="12dp"
-                    app:boxCornerRadiusBottomEnd="12dp">
+                    app:boxCornerRadiusBottomEnd="12dp"
+                    app:boxStrokeColor="@color/primary"
+                    app:hintTextColor="@color/primary">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etUsername"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:inputType="textNoSuggestions"
-                        android:maxLines="1" />
+                        android:maxLines="1"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_muted" />
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <!-- Password Input with Eye Button Toggle -->
@@ -72,19 +77,25 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:hint="@string/password_hint"
+                    android:textColorHint="@color/text_secondary"
                     app:boxBackgroundMode="outline"
                     app:boxCornerRadiusTopStart="12dp"
                     app:boxCornerRadiusTopEnd="12dp"
                     app:boxCornerRadiusBottomStart="12dp"
                     app:boxCornerRadiusBottomEnd="12dp"
-                    app:endIconMode="password_toggle">
+                    app:boxStrokeColor="@color/primary"
+                    app:hintTextColor="@color/primary"
+                    app:endIconMode="password_toggle"
+                    app:endIconTint="@color/text_secondary">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etPassword"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:inputType="textPassword"
-                        android:maxLines="1" />
+                        android:maxLines="1"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_muted" />
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <!-- Server URL Config (Collapsible/Optional) -->
@@ -94,18 +105,26 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:hint="Server URL"
+                    android:textColorHint="@color/text_secondary"
                     app:boxBackgroundMode="outline"
                     app:boxCornerRadiusTopStart="12dp"
                     app:boxCornerRadiusTopEnd="12dp"
                     app:boxCornerRadiusBottomStart="12dp"
-                    app:boxCornerRadiusBottomEnd="12dp">
+                    app:boxCornerRadiusBottomEnd="12dp"
+                    app:boxStrokeColor="@color/primary"
+                    app:hintTextColor="@color/primary"
+                    app:helperText="Physical phone: Use computer IP (e.g. http://192.168.1.5:3000)"
+                    app:helperTextTextColor="@color/text_secondary"
+                    app:helperTextEnabled="true">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etServerUrl"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:inputType="textUri"
-                        android:maxLines="1" />
+                        android:maxLines="1"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_muted" />
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <!-- Error TextView -->
