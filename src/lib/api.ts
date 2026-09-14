@@ -103,7 +103,8 @@ export function generateTursoShareLink(config: ServerConfig): string {
   }
 }
 
-// Default mode is Turso DB for permanent, multi-device cloud storage
+// Default mode is Local Standalone for instant zero-config usage on any device,
+// or Turso DB when credentials are provided via environment variables, invite link, or storage.
 export function getStoredServerConfig(): ServerConfig {
   const envTursoUrl = (import.meta.env.VITE_TURSO_DATABASE_URL || '').trim();
   const envTursoToken = (import.meta.env.VITE_TURSO_AUTH_TOKEN || '').trim();
@@ -132,27 +133,48 @@ export function getStoredServerConfig(): ServerConfig {
     }
   }
 
+  // 2. Check localStorage
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CONFIG);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return {
-        mode: parsed.mode || 'turso',
-        serverUrl: parsed.serverUrl || '',
-        tursoUrl: parsed.tursoUrl || envTursoUrl,
-        tursoAuthToken: parsed.tursoAuthToken || envTursoToken,
-      };
+      if (parsed && typeof parsed.mode === 'string') {
+        const hasTursoCreds = Boolean(
+          (parsed.tursoUrl?.trim() || envTursoUrl) &&
+          (parsed.tursoAuthToken?.trim() || envTursoToken)
+        );
+        // If mode is turso but user does NOT have credentials configured,
+        // do not keep them stuck in broken turso mode! Default them to local mode.
+        const resolvedMode = (parsed.mode === 'turso' && !hasTursoCreds) ? 'local' : parsed.mode;
+        return {
+          mode: resolvedMode,
+          serverUrl: parsed.serverUrl || '',
+          tursoUrl: parsed.tursoUrl || envTursoUrl,
+          tursoAuthToken: parsed.tursoAuthToken || envTursoToken,
+        };
+      }
     }
   } catch (e) {
     // ignore
   }
 
-  // Default to Turso cloud database to store user IDs and passwords permanently
+  // 3. If Turso credentials exist in environment variables (e.g. GitHub Secrets), default to turso!
+  if (envTursoUrl && envTursoToken) {
+    return {
+      mode: 'turso',
+      serverUrl: '',
+      tursoUrl: envTursoUrl,
+      tursoAuthToken: envTursoToken,
+    };
+  }
+
+  // 4. Default to 'local' standalone mode!
+  // This guarantees that any mobile phone, PWA, or browser works 100% out of the box with zero setup errors!
   return {
-    mode: 'turso',
+    mode: 'local',
     serverUrl: '',
-    tursoUrl: envTursoUrl,
-    tursoAuthToken: envTursoToken,
+    tursoUrl: '',
+    tursoAuthToken: '',
   };
 }
 
@@ -271,13 +293,14 @@ export async function apiRegister(
   const config = getStoredServerConfig();
 
   if (config.mode === 'turso') {
-    if (!config.tursoUrl?.trim() || !config.tursoAuthToken?.trim()) {
-      throw new Error(
-        'TURSO_CONFIG_REQUIRED: Turso Database is set as your default cloud database, but Database URL or Auth Token is missing. Please configure Turso credentials to register permanently across devices.'
-      );
+    if (config.tursoUrl?.trim() && config.tursoAuthToken?.trim()) {
+      const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+      return await tursoRegister(client, username, displayName, password, publicKey, keyBackup);
+    } else {
+      // Seamlessly fall back to local mode if Turso credentials are not configured
+      console.warn('Turso credentials not configured; registering account locally on this device.');
+      saveServerConfig({ ...config, mode: 'local' });
     }
-    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
-    return await tursoRegister(client, username, displayName, password, publicKey, keyBackup);
   }
 
   if (config.mode === 'cloud') {
@@ -341,13 +364,13 @@ export async function apiLogin(
   const config = getStoredServerConfig();
 
   if (config.mode === 'turso') {
-    if (!config.tursoUrl?.trim() || !config.tursoAuthToken?.trim()) {
-      throw new Error(
-        'TURSO_CONFIG_REQUIRED: Turso Database is set as your default cloud database, but Database URL or Auth Token is missing. Please configure Turso credentials to log in.'
-      );
+    if (config.tursoUrl?.trim() && config.tursoAuthToken?.trim()) {
+      const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+      return await tursoLogin(client, username, password);
+    } else {
+      console.warn('Turso credentials not configured; checking local accounts on this device.');
+      saveServerConfig({ ...config, mode: 'local' });
     }
-    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
-    return await tursoLogin(client, username, password);
   }
 
   if (config.mode === 'cloud') {
@@ -474,24 +497,26 @@ export async function apiResetLocalPassword(
   const config = getStoredServerConfig();
 
   if (config.mode === 'turso') {
-    if (!config.tursoUrl?.trim() || !config.tursoAuthToken?.trim()) {
-      throw new Error('Turso Database URL and Auth Token are required to reset password on Turso DB.');
-    }
-    const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
-    await tursoResetPassword(client, usernameOrId, newPassword);
+    if (config.tursoUrl?.trim() && config.tursoAuthToken?.trim()) {
+      const client = getTursoClient(config.tursoUrl, config.tursoAuthToken);
+      await tursoResetPassword(client, usernameOrId, newPassword);
 
-    // Re-authenticate and generate updated keys
-    const loginRes = await tursoLogin(client, usernameOrId, newPassword);
-    const { publicKeyPem, keyPair } = await generateRsaKeyPair();
-    const keyBackup = await backupPrivateKeyWithPassword(keyPair.privateKey, newPassword, usernameOrId);
-    await tursoUpdateUserKey(client, loginRes.user.id, publicKeyPem, keyBackup);
-    const pkcs8B64 = await exportPrivateKey(keyPair.privateKey);
-    saveLocalUserPrivateKey(loginRes.user.id, pkcs8B64);
-    return {
-      token: loginRes.token,
-      user: { ...loginRes.user, publicKey: publicKeyPem, keyBackup },
-      keyPair,
-    };
+      // Re-authenticate and generate updated keys
+      const loginRes = await tursoLogin(client, usernameOrId, newPassword);
+      const { publicKeyPem, keyPair } = await generateRsaKeyPair();
+      const keyBackup = await backupPrivateKeyWithPassword(keyPair.privateKey, newPassword, usernameOrId);
+      await tursoUpdateUserKey(client, loginRes.user.id, publicKeyPem, keyBackup);
+      const pkcs8B64 = await exportPrivateKey(keyPair.privateKey);
+      saveLocalUserPrivateKey(loginRes.user.id, pkcs8B64);
+      return {
+        token: loginRes.token,
+        user: { ...loginRes.user, publicKey: publicKeyPem, keyBackup },
+        keyPair,
+      };
+    } else {
+      console.warn('Turso credentials not configured; resetting local password.');
+      saveServerConfig({ ...config, mode: 'local' });
+    }
   }
 
   const users = getLocalUsers();

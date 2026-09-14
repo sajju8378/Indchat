@@ -435,6 +435,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthenticated }) => {
             </div>
           </div>
 
+          {/* Local Standalone Mode Banner */}
+          {serverConfig.mode === 'local' && (
+            <div className="mb-4 rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-3.5 py-2.5 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-emerald-300 text-[11px]">
+                <Smartphone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Ready to use instantly on this device.</span>
+              </div>
+              <button
+                type="button"
+                id="link-phone-btn-local-banner"
+                onClick={() => setIsSyncModalOpen(true)}
+                className="shrink-0 text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 underline underline-offset-2 flex items-center gap-1"
+                title="Scan QR code or open link from Phone 1 to chat between phones"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>Link with Phone 1</span>
+              </button>
+            </div>
+          )}
+
           {/* Turso Cloud Database inline card when in Turso mode */}
           {serverConfig.mode === 'turso' && (!serverConfig.tursoUrl?.trim() || !serverConfig.tursoAuthToken?.trim()) && (
             <div className="mb-4 rounded-2xl border border-indigo-500/30 bg-indigo-950/30 p-4 text-xs">
