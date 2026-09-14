@@ -8,7 +8,7 @@ const activeSockets = new Map();
 const activeCalls = new Map();
 
 // Clean up stale calls older than 3 minutes
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [callId, call] of activeCalls.entries()) {
     if (now - call.updatedAt > 180000 || call.status === 'ended' || call.status === 'rejected') {
@@ -16,6 +16,9 @@ setInterval(() => {
     }
   }
 }, 30000);
+if (cleanupInterval && cleanupInterval.unref) {
+  cleanupInterval.unref();
+}
 
 export function getActiveCalls() {
   return activeCalls;
@@ -220,6 +223,9 @@ export function setupSignaling(server) {
       ws.ping();
     });
   }, 25000);
+  if (pingInterval && pingInterval.unref) {
+    pingInterval.unref();
+  }
 
   wss.on('close', () => {
     clearInterval(pingInterval);

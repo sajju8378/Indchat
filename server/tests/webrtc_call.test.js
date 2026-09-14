@@ -1,4 +1,12 @@
-import http from 'http';
+import http from 'node:http';
+import express from 'express';
+import { WebSocket } from 'ws';
+import { initDatabase } from '../src/database.js';
+import { router as apiRouter } from '../src/api.js';
+import { setupSignaling } from '../src/signaling.js';
+
+let serverPort = 0;
+let serverInstance = null;
 
 function post(path, body, token) {
   return new Promise((resolve, reject) => {
@@ -13,7 +21,7 @@ function post(path, body, token) {
     const req = http.request(
       {
         hostname: '127.0.0.1',
-        port: 3000,
+        port: serverPort,
         path,
         method: 'POST',
         headers,
@@ -45,7 +53,7 @@ function get(path, token) {
     const req = http.request(
       {
         hostname: '127.0.0.1',
-        port: 3000,
+        port: serverPort,
         path,
         method: 'GET',
         headers,
@@ -67,11 +75,49 @@ function get(path, token) {
   });
 }
 
+function startTestServer() {
+  return new Promise((resolve, reject) => {
+    try {
+      initDatabase();
+      const app = express();
+      app.use(express.json());
+      app.use(apiRouter);
+
+      const httpServer = http.createServer(app);
+      setupSignaling(httpServer);
+
+      httpServer.listen(0, '127.0.0.1', () => {
+        const address = httpServer.address();
+        serverPort = address.port;
+        serverInstance = httpServer;
+        console.log(`[Test Setup] In-process test server running on 127.0.0.1:${serverPort}`);
+        resolve();
+      });
+
+      httpServer.on('error', reject);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 async function runWebRTCTests() {
-  console.log('Testing WebRTC Call Signaling endpoints with authenticated users...');
+  console.log('====================================================');
+  console.log('  STARTING WEBRTC & SIGNALING INTEGRATION TESTS');
+  console.log('====================================================');
+
+  await startTestServer();
 
   const ts = Date.now();
-  // Register User A
+
+  // 1. Health check
+  const health = await get('/api/health');
+  if (health.status !== 'ok') {
+    throw new Error('Health check failed: ' + JSON.stringify(health));
+  }
+  console.log('[PASS] API Server health OK');
+
+  // 2. Register Caller A
   const regA = await post('/v1/auth/register', {
     username: `caller_${ts}`,
     displayName: 'Caller A',
@@ -83,7 +129,7 @@ async function runWebRTCTests() {
   const userA = regA.user;
   console.log('[PASS] Registered Caller A:', userA.username);
 
-  // Register User B
+  // 3. Register Callee B
   const regB = await post('/v1/auth/register', {
     username: `callee_${ts}`,
     displayName: 'Callee B',
@@ -95,90 +141,171 @@ async function runWebRTCTests() {
   const userB = regB.user;
   console.log('[PASS] Registered Callee B:', userB.username);
 
+  // 4. Test WebSocket real-time connection & auth
+  const wsUrl = `ws://127.0.0.1:${serverPort}/ws`;
+  const wsA = new WebSocket(wsUrl);
+  const wsB = new WebSocket(wsUrl);
+
+  await Promise.all([
+    new Promise((res) => wsA.on('open', res)),
+    new Promise((res) => wsB.on('open', res)),
+  ]);
+  console.log('[PASS] WebSockets connected for Caller A and Callee B');
+
+  // Authenticate sockets
+  wsA.send(JSON.stringify({ type: 'auth', userId: userA.id }));
+  wsB.send(JSON.stringify({ type: 'auth', userId: userB.id }));
+
+  await new Promise((r) => setTimeout(r, 100));
+
   // Check peer online endpoint
   const onlineCheck = await get(`/v1/calls/online/${userB.id}`, tokenA);
-  if (!onlineCheck.ok) throw new Error('Online check failed: ' + JSON.stringify(onlineCheck));
-  console.log('[PASS] Checked online status for peer');
+  if (!onlineCheck.ok || !onlineCheck.online) {
+    throw new Error('Online check failed: ' + JSON.stringify(onlineCheck));
+  }
+  console.log('[PASS] Checked online status for peer over WebSocket');
 
-  // Test signaling offer endpoint
+  // 5. Test real-time call offer through WebSocket from A to B
   const callId = `call_${ts}`;
-  const offerRes = await post(
-    '/v1/calls/offer',
-    {
+  const wsOfferPromise = new Promise((resolve) => {
+    wsB.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'incoming_call' && msg.callId === callId) {
+          resolve(msg);
+        }
+      } catch (e) {}
+    });
+  });
+
+  wsA.send(
+    JSON.stringify({
+      type: 'call_offer',
       callId,
+      fromUser: userA,
       toUserId: userB.id,
       callType: 'video',
       offer: { type: 'offer', sdp: 'v=0\r\no=- 12345 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n' },
-    },
-    tokenA
+    })
   );
 
-  if (!offerRes.ok) {
-    throw new Error('Offer signal failed: ' + JSON.stringify(offerRes));
+  const incomingOffer = await Promise.race([
+    wsOfferPromise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error('WS Offer timeout')), 2500)),
+  ]);
+  if (!incomingOffer || incomingOffer.callId !== callId) {
+    throw new Error('WebSocket incoming_call failed: ' + JSON.stringify(incomingOffer));
   }
-  console.log('[PASS] WebRTC video call offer signaled from Caller A to Callee B');
+  console.log('[PASS] WebSocket real-time incoming_call received by Callee B');
 
-  // Test signaling poll for Callee B
-  const pollRes = await get(`/v1/calls/poll?userId=${userB.id}`, tokenB);
-  if (!pollRes.ok || !pollRes.incoming) {
-    throw new Error('Poll signals failed for Callee B: ' + JSON.stringify(pollRes));
-  }
-  const receivedSignal = pollRes.incoming;
-  if (receivedSignal.callId !== callId || receivedSignal.callType !== 'video') {
-    throw new Error('Unexpected signal content: ' + JSON.stringify(receivedSignal));
-  }
-  console.log('[PASS] Callee B polled and received incoming call offer with matching callId');
+  // 6. Test real-time call answer through WebSocket from B to A
+  const wsAnswerPromise = new Promise((resolve) => {
+    wsA.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'call_answered' && msg.callId === callId) {
+          resolve(msg);
+        }
+      } catch (e) {}
+    });
+  });
 
-  // Test signaling answer endpoint from Callee B to Caller A
-  const answerRes = await post(
-    '/v1/calls/answer',
-    {
+  wsB.send(
+    JSON.stringify({
+      type: 'call_answer',
       callId,
       toUserId: userA.id,
       answer: { type: 'answer', sdp: 'v=0\r\no=- 54321 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n' },
+    })
+  );
+
+  const answeredCall = await Promise.race([
+    wsAnswerPromise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error('WS Answer timeout')), 2500)),
+  ]);
+  if (!answeredCall || answeredCall.callId !== callId) {
+    throw new Error('WebSocket call_answered failed: ' + JSON.stringify(answeredCall));
+  }
+  console.log('[PASS] WebSocket real-time call_answered received by Caller A');
+
+  // 7. Test REST Signaling Fallback (Offer -> Poll -> Answer -> Candidate -> End)
+  const restCallId = `rest_call_${ts}`;
+  const restOffer = await post(
+    '/v1/calls/offer',
+    {
+      callId: restCallId,
+      toUserId: userB.id,
+      callType: 'audio',
+      offer: { type: 'offer', sdp: 'dummy-rest-sdp' },
+    },
+    tokenA
+  );
+  if (!restOffer.ok) throw new Error('REST offer failed: ' + JSON.stringify(restOffer));
+  console.log('[PASS] REST Signaling: offer submitted');
+
+  const pollRes = await get(`/v1/calls/poll?userId=${userB.id}`, tokenB);
+  if (!pollRes.ok || !pollRes.incoming || pollRes.incoming.callId !== restCallId) {
+    throw new Error('REST poll failed: ' + JSON.stringify(pollRes));
+  }
+  console.log('[PASS] REST Signaling: polled incoming offer successfully');
+
+  const restAnswer = await post(
+    '/v1/calls/answer',
+    {
+      callId: restCallId,
+      toUserId: userA.id,
+      answer: { type: 'answer', sdp: 'dummy-rest-answer-sdp' },
     },
     tokenB
   );
-  if (!answerRes.ok) {
-    throw new Error('Answer signal failed: ' + JSON.stringify(answerRes));
-  }
-  console.log('[PASS] WebRTC answer signaled from Callee B to Caller A');
+  if (!restAnswer.ok) throw new Error('REST answer failed: ' + JSON.stringify(restAnswer));
+  console.log('[PASS] REST Signaling: answer submitted');
 
-  // Test ICE candidate endpoint
-  const iceRes = await post(
-    '/v1/calls/ice-candidate',
+  const candidateRes = await post(
+    '/v1/calls/candidate',
     {
-      callId,
+      callId: restCallId,
       toUserId: userB.id,
-      candidate: { candidate: 'candidate:1 1 UDP 2122260223 127.0.0.1 50000 typ host', sdpMid: '0', sdpMLineIndex: 0 },
+      candidate: { candidate: 'dummy-candidate' },
     },
     tokenA
   );
-  if (!iceRes.ok) {
-    throw new Error('ICE candidate signal failed: ' + JSON.stringify(iceRes));
-  }
-  console.log('[PASS] ICE candidate forwarded successfully');
+  if (!candidateRes.ok) throw new Error('REST candidate failed: ' + JSON.stringify(candidateRes));
+  console.log('[PASS] REST Signaling: ICE candidate recorded');
 
-  // Test end call endpoint
   const endRes = await post(
     '/v1/calls/end',
     {
-      callId,
+      callId: restCallId,
       toUserId: userB.id,
     },
     tokenA
   );
-  if (!endRes.ok) {
-    throw new Error('End call signal failed: ' + JSON.stringify(endRes));
+  if (!endRes.ok) throw new Error('REST end call failed: ' + JSON.stringify(endRes));
+  console.log('[PASS] REST Signaling: call terminated');
+
+  // Clean up WebSockets & Server
+  wsA.close();
+  wsB.close();
+
+  if (serverInstance) {
+    await new Promise((res) => serverInstance.close(res));
   }
-  console.log('[PASS] WebRTC call termination signaled successfully');
 
   console.log('====================================================');
-  console.log('ALL WEBRTC CALL SIGNALING INTEGRATION TESTS PASSED!');
+  console.log('  ALL WEBRTC & SIGNALING TESTS PASSED SUCCESSFULLY! ');
   console.log('====================================================');
 }
 
-runWebRTCTests().catch((err) => {
-  console.error('WebRTC test failed:', err);
-  process.exit(1);
-});
+runWebRTCTests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('WebRTC test failed:', err);
+    if (serverInstance) {
+      serverInstance.close(() => process.exit(1));
+    } else {
+      process.exit(1);
+    }
+  });
