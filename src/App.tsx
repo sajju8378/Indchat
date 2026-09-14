@@ -8,6 +8,7 @@ import { AndroidInfoModal } from './components/AndroidInfoModal';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ServerSettingsModal } from './components/ServerSettingsModal';
+import { FullscreenHeaderBanner } from './components/FullscreenHeaderBanner';
 import { getStoredServerConfig, ServerConfig } from './lib/api';
 import { getStoredSession, saveStoredSession, clearStoredSession } from './lib/session';
 
@@ -19,9 +20,15 @@ export default function App() {
   const [showServerSettings, setShowServerSettings] = useState(false);
   const [serverConfig, setServerConfig] = useState<ServerConfig>(getStoredServerConfig());
 
-  // Attempt restoring session on mount
+  // Attempt restoring session on mount with strict timeout fallback
   useEffect(() => {
     let mounted = true;
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        setIsRestoringSession(false);
+      }
+    }, 1200);
+
     (async () => {
       try {
         const saved = await getStoredSession();
@@ -32,12 +39,14 @@ export default function App() {
         console.warn('Session restoration failed:', err);
       } finally {
         if (mounted) {
+          clearTimeout(safetyTimer);
           setIsRestoringSession(false);
         }
       }
     })();
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
     };
   }, []);
 
@@ -66,31 +75,35 @@ export default function App() {
   // If no session, show AuthModal
   if (!session) {
     return (
-      <div className="relative flex min-h-[100dvh] w-full flex-col items-center justify-center bg-slate-950 text-slate-100 p-2 sm:p-4">
-        <div className="absolute top-4 right-4 flex items-center gap-2">
-          <PWAInstallButton />
-          <button
-            id="open-android-info-btn-auth"
-            onClick={() => setShowAndroidInfo(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
-          >
-            <Smartphone className="h-4 w-4 text-emerald-400" />
-            <span className="hidden sm:inline">Android APK & Build Info</span>
-          </button>
-        </div>
+      <div className="relative flex min-h-[100dvh] w-full flex-col bg-slate-950 text-slate-100">
+        <FullscreenHeaderBanner />
+        <div className="relative flex flex-1 w-full flex-col items-center justify-center p-2 sm:p-4">
+          <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+            <PWAInstallButton />
+            <button
+              id="open-android-info-btn-auth"
+              onClick={() => setShowAndroidInfo(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
+            >
+              <Smartphone className="h-4 w-4 text-emerald-400" />
+              <span className="hidden sm:inline">Android APK & Build Info</span>
+            </button>
+          </div>
 
-        <AuthModal onAuthenticated={handleAuthenticated} />
-        <AndroidInfoModal
-          isOpen={showAndroidInfo}
-          onClose={() => setShowAndroidInfo(false)}
-        />
-        <OfflineIndicator />
+          <AuthModal onAuthenticated={handleAuthenticated} />
+          <AndroidInfoModal
+            isOpen={showAndroidInfo}
+            onClose={() => setShowAndroidInfo(false)}
+          />
+          <OfflineIndicator />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex h-[100dvh] w-full flex-col bg-slate-950 text-slate-100 overflow-hidden">
+      <FullscreenHeaderBanner />
       {/* Top Application Bar */}
       <header
         className={`${

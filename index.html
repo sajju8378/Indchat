@@ -1,6 +1,35 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en" class="dark" style="background-color: #020617; color: #f8fafc;">
   <head>
+    <style>
+      html, body {
+        background-color: #020617 !important;
+        color: #f8fafc !important;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+      }
+      @keyframes e2ee-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+    <script>
+      // Self-healing path normalizer for GitHub Pages subdirectory deployments
+      (function() {
+        try {
+          var path = window.location.pathname;
+          var host = window.location.hostname;
+          if (host.indexOf('github.io') !== -1) {
+            // If at /Indchat without trailing slash, normalize to /Indchat/
+            if (path === '/Indchat') {
+              window.location.replace('/Indchat/' + window.location.search + window.location.hash);
+            }
+          }
+        } catch(e) {}
+      })();
+    </script>
     <script>
       // Suppress benign [vite] websocket connection logging in container iframe preview
       (function() {
@@ -75,7 +104,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="E2EE Chat" />
     <meta name="application-name" content="Simple E2EE Chat" />
-    <link rel="manifest" href="./manifest.webmanifest" />
     
     <!-- Icons -->
     <link rel="icon" type="image/svg+xml" href="./icon.svg" />
@@ -89,8 +117,38 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="background-color: #020617; color: #f8fafc; margin: 0; padding: 0;">
+    <div id="root">
+      <div id="app-initial-loader" style="display:flex;height:100vh;height:100dvh;width:100%;flex-direction:column;align-items:center;justify-content:center;background-color:#020617;color:#f8fafc;font-family:system-ui,-apple-system,sans-serif;padding:16px;box-sizing:border-box;">
+        <div style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:16px;background:#4f46e5;margin-bottom:14px;box-shadow:0 8px 20px -4px rgba(79,70,229,0.5);">
+          <svg style="width:28px;height:28px;color:#fff;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+        <h1 style="margin:0 0 6px;font-size:16px;font-weight:700;letter-spacing:-0.01em;color:#fff;">Simple E2EE Chat</h1>
+        <p style="margin:0 0 20px;font-size:11px;color:#94a3b8;text-align:center;">End-to-End Encrypted Messaging</p>
+        <div style="width:24px;height:24px;border:2.5px solid #1e293b;border-top-color:#6366f1;border-radius:50%;animation:e2ee-spin 0.8s linear infinite;"></div>
+        
+        <div id="initial-load-error" style="display:none;margin-top:20px;max-width:320px;padding:12px 14px;border-radius:14px;background:#450a0a;border:1px solid #7f1d1d;color:#fca5a5;font-size:11px;text-align:center;">
+          <p id="initial-load-error-text" style="margin:0 0 10px;">Failed to initialize app.</p>
+          <div style="display:flex;gap:8px;justify-content:center;">
+            <button onclick="window.location.reload()" style="padding:6px 12px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:11px;cursor:pointer;">Reload</button>
+            <button onclick="localStorage.clear();window.location.reload()" style="padding:6px 12px;background:#1e293b;color:#cbd5e1;border:1px solid #475569;border-radius:8px;font-weight:600;font-size:11px;cursor:pointer;">Reset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.addEventListener('error', function(e) {
+        var errBox = document.getElementById('initial-load-error');
+        var errText = document.getElementById('initial-load-error-text');
+        if (errBox && errText && document.getElementById('app-initial-loader')) {
+          errBox.style.display = 'block';
+          errText.textContent = e.message || 'Error loading script assets.';
+        }
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

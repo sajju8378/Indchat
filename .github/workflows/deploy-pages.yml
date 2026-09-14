@@ -32,14 +32,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v4
+
       - name: Build Web Application
         run: npm run build
+        env:
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
 
       - name: Ensure .nojekyll in dist
         run: touch dist/.nojekyll
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3

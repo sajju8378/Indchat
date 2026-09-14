@@ -391,13 +391,22 @@ export const ChatView: React.FC<ChatViewProps> = ({ session, peer, onBack }) => 
                   <span>{formatTime(msg.createdAt)}</span>
 
                   {isSent && (
-                    <span className="flex items-center">
+                    <span
+                      className="flex items-center"
+                      title={
+                        msg.status === 'read'
+                          ? 'Read (✓✓)'
+                          : msg.status === 'delivered'
+                          ? 'Delivered (✓✓)'
+                          : 'Sent (✓)'
+                      }
+                    >
                       {msg.status === 'read' ? (
-                        <CheckCheck className="h-3.5 w-3.5 text-cyan-300" title="Read (✓✓)" />
+                        <CheckCheck className="h-3.5 w-3.5 text-cyan-300" />
                       ) : msg.status === 'delivered' ? (
-                        <CheckCheck className="h-3.5 w-3.5 text-slate-300" title="Delivered (✓✓)" />
+                        <CheckCheck className="h-3.5 w-3.5 text-slate-300" />
                       ) : (
-                        <Check className="h-3.5 w-3.5 text-indigo-300" title="Sent (✓)" />
+                        <Check className="h-3.5 w-3.5 text-indigo-300" />
                       )}
                     </span>
                   )}

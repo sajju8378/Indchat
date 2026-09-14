@@ -5,8 +5,15 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
+  // Auto-detect GitHub Actions / Pages deployment
+  const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+  const repoName = process.env.GITHUB_REPOSITORY
+    ? process.env.GITHUB_REPOSITORY.split('/')[1]
+    : 'Indchat';
+  const basePath = process.env.VITE_BASE_PATH || (isGitHubActions ? `/${repoName}/` : './');
+
   return {
-    base: './',
+    base: basePath,
     plugins: [
       react(),
       tailwindcss(),
@@ -34,8 +41,8 @@ export default defineConfig(() => {
           display: 'standalone',
           display_override: ['window-controls-overlay', 'standalone', 'fullscreen'],
           orientation: 'portrait-primary',
-          start_url: './',
-          scope: './',
+          start_url: basePath,
+          scope: basePath,
           categories: ['social', 'security', 'utilities'],
           icons: [
             {
